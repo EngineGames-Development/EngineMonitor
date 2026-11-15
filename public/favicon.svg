@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A1E25"/>
+      <stop offset="1" stop-color="#0B0D10"/>
+    </linearGradient>
+    <linearGradient id="arc" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2BC4B0"/>
+      <stop offset="0.55" stop-color="#FF9A4D"/>
+      <stop offset="1" stop-color="#FF7A1A"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <rect x="64.5" y="64.5" width="895" height="895" rx="207.5" fill="none" stroke="#2E3440" stroke-width="3"/>
+  <!-- gauge track: 270deg arc, centre 512,560, r 300 -->
+  <path d="M 299.9 772.1 A 300 300 0 1 1 724.1 772.1" fill="none" stroke="#262B33" stroke-width="72" stroke-linecap="round"/>
+  <!-- gauge value -->
+  <path d="M 299.9 772.1 A 300 300 0 1 1 800.4 482.4" fill="none" stroke="url(#arc)" stroke-width="72" stroke-linecap="round"/>
+  <!-- needle -->
+  <line x1="512" y1="560" x2="700" y2="400" stroke="#E7EAEE" stroke-width="40" stroke-linecap="round"/>
+  <circle cx="512" cy="560" r="56" fill="#E7EAEE"/>
+  <circle cx="512" cy="560" r="22" fill="#0B0D10"/>
+</svg>
