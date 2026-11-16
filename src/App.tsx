@@ -1,4 +1,5 @@
 import { AppShell } from "./layout/AppShell";
+import { MetricsProvider } from "./metrics/MetricsProvider";
 import { NavigationProvider, useNavigation } from "./navigation/NavigationProvider";
 import { PAGES } from "./pages";
 import { ThemeProvider } from "./theme/ThemeProvider";
@@ -12,11 +13,13 @@ function CurrentPage() {
 export function App() {
   return (
     <ThemeProvider>
-      <NavigationProvider>
-        <AppShell>
-          <CurrentPage />
-        </AppShell>
-      </NavigationProvider>
+      <MetricsProvider>
+        <NavigationProvider>
+          <AppShell>
+            <CurrentPage />
+          </AppShell>
+        </NavigationProvider>
+      </MetricsProvider>
     </ThemeProvider>
   );
 }

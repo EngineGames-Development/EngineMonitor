@@ -8,5 +8,7 @@ export { Meter, clampPercent } from "./Meter";
 export { Metric } from "./Metric";
 export { PageHeader } from "./PageHeader";
 export { SegmentedControl, type SegmentOption } from "./SegmentedControl";
+export { StatTile } from "./StatTile";
 export { EmptyState, ErrorState, Skeleton } from "./States";
+export { TimeSeriesChart, type Series } from "./TimeSeriesChart";
 export { toneForUtilisation, type Tone } from "./tone";

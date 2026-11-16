@@ -9,7 +9,7 @@ with the code; sections that describe work not yet implemented are marked
 ```
 ┌────────────────────────── Tauri process (Rust) ──────────────────────────┐
 │                                                                          │
-│  Sampler thread (planned, M3)          History writer (planned, M5)      │
+│  Sampler thread (M3, done)             History writer (planned, M5)      │
 │  ├─ owns SystemCollector (M2, done)    ├─ owns rusqlite::Connection     │
 │  ├─ refreshes at user interval          ├─ batched INSERTs in one txn    │
 │  ├─ builds a compact Snapshot           └─ periodic retention cleanup    │
@@ -17,6 +17,7 @@ with the code; sections that describe work not yet implemented are marked
 │                                                    │                     │
 │  Commands (validated, minimal surface)             │                     │
 │  ├─ app_info               (M1, implemented)       │                     │
+│  ├─ system_info / latest_snapshot (M3, implemented)│                     │
 │  ├─ get_settings / update_settings (planned)       │                     │
 │  ├─ query_history          (planned)               │                     │
 │  ├─ set_process_stream     (planned)               │                     │
@@ -25,7 +26,7 @@ with the code; sections that describe work not yet implemented are marked
                                                      │ Tauri IPC / events
 ┌──────────────────────── WebView (React + TS) ──────┼─────────────────────┐
 │  ipc/      typed wrappers around invoke() + listen()                     │
-│  store     single subscription → ring buffers for live graphs (planned)   │
+│  metrics/  MetricsProvider: one subscription → capped history (M3)       │
 │  pages/    Overview · CPU · Memory · GPU · Processes · Storage ·          │
 │            Network · History · Settings                                  │
 │  design/   design-system components (Card, Meter, Badge, EmptyState…)    │
@@ -45,6 +46,9 @@ with the code; sections that describe work not yet implemented are marked
 | **History is downsampled.** | Live data is held in memory (ring buffers). Only every *n*-th sample (configurable, default 5 s) is written to disk, in batched transactions, with a retention window enforced by periodic `DELETE`s. |
 | **No routing / icon / font dependencies.** | Navigation is a small typed state machine; icons are a hand-drawn SVG set; fonts use the OS UI stack. Fewer dependencies, no network fetches, smaller bundle. |
 | **Minimal Tauri permissions.** | No `fs`, `shell`, `http` or `opener` plugins. The capability file grants only core event + window permissions and our own commands. A strict CSP blocks remote resources. |
+| **`freezePrototype` is off.** | Tauri's `freezePrototype` freezes `Object.prototype`. Recharts depends on `decimal.js-light`, which assigns `valueOf` on its own prototype; with a frozen `Object.prototype` that assignment throws (the JS "override mistake") and the UI fails to start. Found in the real app in M3 (jsdom tests do not freeze prototypes). Since Recharts is a required dependency, the option is disabled. Prototype-pollution exposure remains low: no remote content is loaded (CSP `default-src 'self'`), and the IPC surface is an explicit allow-list. |
+| **Monitoring starts in `init(&app)`, not a `setup` hook.** | Tauri runs `setup` only once the event loop starts. Starting between `build()` and `run()` lets the integration tests (mock runtime, no event loop) exercise the same start-up path. Events emitted before the window loads are lost; the frontend calls `latest_snapshot` once after subscribing to cover that gap. |
+| **Missed events become gaps.** | Each event carries a `sequence`. A jump in sequence inserts a null point into the live history, so charts show a gap instead of a straight line across missing data. No event for 3 × interval marks the stream "Stale". |
 
 ## 2. Directory structure
 
@@ -76,7 +80,8 @@ EngineMonitor/
       ├─ system/              OS facts + SystemCollector (owns all sysinfo state)
       ├─ cpu/ memory/ storage/ network/   per-domain collectors (M2, done)
       ├─ gpu/ processes/                  (planned, M4)
-      ├─ history/ settings/ events/       (planned, M3–M6)
+      ├─ events/              sampler thread (generic, Condvar-timed) + MonitorState (M3)
+      ├─ history/ settings/               (planned, M5–M6)
    ├─ tests/                  ipc.rs (IPC + ACL), collectors.rs (real hardware)
    └─ examples/snapshot.rs    prints a real snapshot as JSON
 ```
@@ -101,7 +106,7 @@ EngineMonitor/
 | `react`, `react-dom` 19 | UI |
 | `@tauri-apps/api` 2 | `invoke` / `listen` |
 | `tailwindcss` 4 + `@tailwindcss/vite` | styling, tokens via `@theme` |
-| `recharts` 3 (from M3) | charts |
+| `recharts` 3 | charts (adds ~110 KB gzip to the bundle; acceptable for a local app, revisit in M6) |
 | `@tanstack/react-virtual` (planned, M4) | virtualised process table |
 | `vite`, `typescript`, `vitest`, `@testing-library/*`, `jsdom` | dev / test only |
 

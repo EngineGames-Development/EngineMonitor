@@ -24,11 +24,15 @@ function isValidQuantity(n: number): boolean {
   return Number.isFinite(n) && n >= 0;
 }
 
-/** Choose a precision that keeps roughly three significant digits. */
-function precisionFor(n: number): number {
-  if (n >= 100) return 0;
-  if (n >= 10) return 1;
-  return 2;
+/**
+ * Formats with roughly three significant digits. Precision is chosen from the
+ * *rounded* value so 9.997 becomes "10.0", not "10.00".
+ */
+function toSignificant(n: number): string {
+  const digits = n >= 100 ? 0 : n >= 10 ? 1 : 2;
+  const s = n.toFixed(digits);
+  if (digits > 0 && Number(s) >= 10 ** (3 - digits)) return n.toFixed(digits - 1);
+  return s;
 }
 
 export function splitBytes(bytes: number): FormattedValue {
@@ -39,8 +43,7 @@ export function splitBytes(bytes: number): FormattedValue {
     v /= 1024;
     i++;
   }
-  const digits = i === 0 ? 0 : precisionFor(v);
-  return { value: v.toFixed(digits), unit: IEC_UNITS[i] ?? "B" };
+  return { value: i === 0 ? v.toFixed(0) : toSignificant(v), unit: IEC_UNITS[i] ?? "B" };
 }
 
 export function formatBytes(bytes: number): string {
@@ -66,8 +69,7 @@ export function splitBitRate(bytesPerSecond: number): FormattedValue {
     v /= 1000;
     i++;
   }
-  const digits = i === 0 ? 0 : precisionFor(v);
-  return { value: v.toFixed(digits), unit: BIT_UNITS[i] ?? "bit/s" };
+  return { value: i === 0 ? v.toFixed(0) : toSignificant(v), unit: BIT_UNITS[i] ?? "bit/s" };
 }
 
 export function formatBitRate(bytesPerSecond: number): string {

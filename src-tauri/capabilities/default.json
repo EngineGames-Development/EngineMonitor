@@ -6,6 +6,8 @@
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "allow-app-info"
+    "allow-app-info",
+    "allow-system-info",
+    "allow-latest-snapshot"
   ]
 }

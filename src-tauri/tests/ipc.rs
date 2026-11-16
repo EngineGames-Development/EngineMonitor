@@ -15,6 +15,7 @@ fn app() -> (
     let app = enginemonitor_lib::configure(mock_builder())
         .build(tauri::generate_context!())
         .expect("failed to build app");
+    enginemonitor_lib::init(&app);
     let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .expect("failed to build main window");
@@ -78,4 +79,48 @@ fn commands_are_denied_for_windows_without_capability() {
         err.to_string().contains("not allowed"),
         "unexpected error: {err}"
     );
+}
+
+#[test]
+fn system_info_returns_real_machine_data() {
+    let (_app, webview) = app();
+    let res = get_ipc_response(&webview, request("system_info")).expect("system_info");
+    let info: Value = res.deserialize().unwrap();
+    assert!(info["cpu"]["logicalCores"].as_u64().unwrap() > 0);
+    assert!(info["totalMemoryBytes"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn sampler_emits_snapshot_events_and_exposes_latest() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    use tauri::Listener;
+
+    let (app, webview) = app();
+    let (tx, rx) = mpsc::channel::<String>();
+    app.listen_any(enginemonitor_lib::events::SNAPSHOT_EVENT, move |event| {
+        let _ = tx.send(event.payload().to_owned());
+    });
+
+    // Default interval is 1 s; two ticks prove it is periodic.
+    let first: Value = serde_json::from_str(
+        &rx.recv_timeout(Duration::from_secs(5))
+            .expect("first event"),
+    )
+    .unwrap();
+    let second: Value = serde_json::from_str(
+        &rx.recv_timeout(Duration::from_secs(5))
+            .expect("second event"),
+    )
+    .unwrap();
+    assert_eq!(
+        second["sequence"].as_u64().unwrap(),
+        first["sequence"].as_u64().unwrap() + 1
+    );
+    assert_eq!(second["intervalMs"], 1000);
+    assert!(second["snapshot"]["memory"]["totalBytes"].as_u64().unwrap() > 0);
+
+    let res = get_ipc_response(&webview, request("latest_snapshot")).expect("latest_snapshot");
+    let latest: Value = res.deserialize().unwrap();
+    assert!(latest["sequence"].as_u64().unwrap() >= 1);
 }

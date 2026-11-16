@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { toAppError, type AppError } from "./errors";
+import type { SnapshotEvent, SystemInfo } from "./types";
 
 /** Mirror of `commands::AppInfo` in Rust. */
 export interface AppInfo {
@@ -30,4 +31,13 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export function getAppInfo(): Promise<CommandResult<AppInfo>> {
   return call<AppInfo>("app_info");
+}
+
+export function getSystemInfo(): Promise<CommandResult<SystemInfo>> {
+  return call<SystemInfo>("system_info");
+}
+
+/** Latest sample, or null before the first tick. One-shot: live data arrives as events. */
+export function getLatestSnapshot(): Promise<CommandResult<SnapshotEvent | null>> {
+  return call<SnapshotEvent | null>("latest_snapshot");
 }

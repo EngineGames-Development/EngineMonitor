@@ -38,11 +38,20 @@ describe("App navigation", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Settings");
   });
 
-  it("never shows fabricated metrics on unimplemented sections", () => {
+  it("never shows fabricated metrics on unimplemented sections", async () => {
+    const user = userEvent.setup();
     render(<App />);
+    await user.click(screen.getByRole("button", { name: /^CPU/ }));
     expect(screen.getByText("Not implemented")).toBeInTheDocument();
     expect(screen.queryByRole("meter")).not.toBeInTheDocument();
     expect(screen.queryByText(/\d+(\.\d+)?\s?%/)).not.toBeInTheDocument();
+  });
+
+  it("shows no measurements on the Overview when the backend is missing", async () => {
+    render(<App />);
+    expect(await screen.findByText("Backend unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("meter")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /utilisation/ })).not.toBeInTheDocument();
   });
 
   it("reports a missing backend on the Settings page instead of inventing app info", async () => {

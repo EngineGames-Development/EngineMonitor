@@ -34,10 +34,15 @@ cargo fmt --check
 
 ## Architecture
 
-**Data flow (target design, see `ARCHITECTURE.md`).** A single Rust sampler thread owns the `sysinfo` state and pushes snapshots to the frontend as Tauri events (`metrics://snapshot`). The frontend does not poll for metrics. `useCommand` (`src/ipc/useCommand.ts`) is only for one-shot commands. Rates (network, disk) are computed from counter deltas divided by measured elapsed time. A counter that decreases is treated as a reset and gives no rate for that tick. GPU access goes through a provider trait whose failures resolve to an explicit unsupported state.
+**Data flow (see `ARCHITECTURE.md`).**
+- **Backend:** one sampler thread (`events/`) owns the `SystemCollector`. It emits a `SnapshotEvent` (`sequence`, `intervalMs`, `snapshot`) on `metrics://snapshot` to the `main` window every tick.
+- **Start-up:** monitoring starts in `init(&app)` between `build()` and `run()`, not in a `setup` hook, because `setup` never runs under the mock runtime. Integration tests must call `enginemonitor_lib::init(&app)` after building the app.
+- **Frontend:** `MetricsProvider` (`src/metrics/`) holds the app's only subscription. Pages read from `useMetrics()` and never subscribe or poll themselves. The store logic is a pure reducer (`store.ts`, `history.ts`) and is unit-tested directly. `useCommand` (`src/ipc/useCommand.ts`) is only for one-shot commands.
+- **Prototype freezing:** don't re-enable `freezePrototype` in `tauri.conf.json`. It crashes Recharts at startup in the real app, and jsdom tests won't catch it.
+- **Real-app verification:** run `npm run tauri dev`. The window can be captured without screenshotting the whole desktop using `PrintWindow` with the `PW_RENDERFULLCONTENT` flag. Rates (network, disk) are computed from counter deltas divided by measured elapsed time. A counter that decreases is treated as a reset and gives no rate for that tick. GPU access goes through a provider trait whose failures resolve to an explicit unsupported state.
 
-As of milestone 2:
-- The collectors exist. `system::SystemCollector` owns all `sysinfo` state, and `sample()` returns a `Snapshot`. The sampler thread and events (milestone 3) and the only command so far, `app_info`, don't use it yet.
+Collectors:
+- `system::SystemCollector` owns all `sysinfo` state, and `sample()` returns a `Snapshot`.
 - Each domain module (`cpu/`, `memory/`, `storage/`, `network/`) has a pure `build`/`build_sample` function that takes plain values. Unit tests target that function; a thin `sample()` reads from `sysinfo`.
 - Missing values: use `Option` for "not measured this tick" (first tick, counter reset). Use `reading::Reading<T>` (`ok` / `unsupported` / `error`, serialised with a `status` tag) where availability depends on the platform.
 - `sysinfo` reports unknown CPU frequency as 0 MHz and missing disk I/O counters as 0 bytes. Treat both as unavailable, not as real zeros.
@@ -54,7 +59,7 @@ Rust types sent to the frontend use `#[serde(rename_all = "camelCase")]` and are
 
 **Frontend structure.**
 - **Navigation:** state-based, with no router. The `ROUTES` order in `src/navigation/routes.ts` sets both sidebar order and the Ctrl/Cmd+1..9 shortcuts.
-- **Pages:** `src/pages/index.tsx` maps each `RouteId` to a page. A section with no collector renders `PlannedSection`, which shows the plan and no numbers. `src/App.test.tsx` asserts that no meters or percentages appear on such sections. Adjust that test when you implement the Overview.
+- **Pages:** `src/pages/index.tsx` maps each `RouteId` to a page. A section with no collector renders `PlannedSection`, which shows the plan and no numbers. `src/App.test.tsx` asserts that no meters or percentages appear on such a section (it currently uses CPU); point it at another unimplemented section when you implement CPU. Test payloads come from `src/test/fixtures.ts`, which is for tests only.
 - **Theming:** `src/styles/index.css` defines raw `--em-*` variables per `[data-theme]`, and `@theme inline` maps them to semantic Tailwind utilities (`bg-surface`, `bg-raised`, `border-line`, `text-fg-muted`, `text-primary`, …). Use those utilities, not raw colours, so both themes work. Chart colours are `--em-chart-*`.
 - **Theme preference:** stored in localStorage by `src/theme/` for now. It is planned to move to the SQLite settings store in milestone 6.
 - **Shared components:** design-system components and the hand-drawn icon set live in `src/design/` (import from `src/design/index.ts`). New icons go into the `paths` map in `Icon.tsx`. The project avoids extra icon, router, font and `clsx` dependencies on purpose.

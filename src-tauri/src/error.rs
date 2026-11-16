@@ -5,7 +5,7 @@
 
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     /// The frontend sent a value that failed validation.
     #[error("invalid argument: {0}")]

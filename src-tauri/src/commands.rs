@@ -5,8 +5,11 @@
 //! `capabilities/default.json`, otherwise the frontend cannot call it.
 
 use serde::Serialize;
+use tauri::State;
 
 use crate::error::AppResult;
+use crate::events::{MonitorState, SnapshotEvent};
+use crate::system::SystemInfo;
 
 /// Static information about the running build. Contains no user data.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -36,6 +39,19 @@ impl AppInfo {
 #[tauri::command]
 pub fn app_info() -> AppResult<AppInfo> {
     Ok(AppInfo::current())
+}
+
+/// Static machine description (OS, CPU model, installed memory).
+#[tauri::command]
+pub fn system_info(state: State<'_, MonitorState>) -> AppResult<SystemInfo> {
+    state.system_info()
+}
+
+/// Most recent sample, so a page can render before the next event arrives.
+/// `None` until the first tick has completed.
+#[tauri::command]
+pub fn latest_snapshot(state: State<'_, MonitorState>) -> AppResult<Option<SnapshotEvent>> {
+    state.latest()
 }
 
 #[cfg(test)]

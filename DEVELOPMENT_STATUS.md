@@ -1,6 +1,6 @@
 # EngineMonitor — Development Status
 
-Last updated: 2026-11-16 · Current milestone: **2 (Collectors) — complete** · Next: 3 (live data to the UI)
+Last updated: 2026-11-16 · Current milestone: **3 (Live data) — complete** · Next: 4 (processes, GPU, dedicated pages)
 
 Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
@@ -19,7 +19,6 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
 ## Milestone 2 — Collectors ✅
 
-Backend only; nothing is sent to the UI yet (that is milestone 3).
 
 | Item | Status | Notes |
 |---|---|---|
@@ -40,14 +39,32 @@ Backend only; nothing is sent to the UI yet (that is milestone 3).
 - `cargo run --example snapshot` on the dev machine (Ryzen 3 3200G, 16 GB with 13.93 GiB visible, C: SSD, D: HDD, G: Google Drive virtual volume, Ethernet + 2 VMware adapters): all values plausible; G: correctly reported as "I/O unavailable"; Windows load average reported unsupported. One `sample()` tick took ~18 ms in a debug build.
 - Values have **not** yet been compared side by side with Task Manager.
 
+## Milestone 3 — Live data ✅
+
+| Item | Status | Notes |
+|---|---|---|
+| Sampler thread (`events/sampler.rs`) | ✅ | Generic, Condvar-timed: stop and interval changes take effect immediately; cadence measured from tick start; interval clamped to 250 ms–10 s (fixed at 1 s until settings exist in M6). |
+| Snapshot events | ✅ | `metrics://snapshot` to the main window with `sequence` + `intervalMs`; emit failures logged once per streak. |
+| Commands | ✅ | `system_info`, `latest_snapshot` (allow-listed + capability). |
+| Frontend store (`src/metrics/`) | ✅ | One subscription for the whole app; capped history (300 points); sequence gaps → chart gaps; duplicate/out-of-order events dropped; "Stale" after 3 missed intervals; listener cleaned up on unmount, including unmount during registration. |
+| Charts | ✅ | `TimeSeriesChart` (Recharts): theme tokens, no animation, nulls drawn as gaps. |
+| Overview dashboard | ✅ | CPU, memory, disk activity, network tiles with 1-minute sparklines; 5-minute CPU/memory and network charts; system card (OS, kernel, CPU model, cores, arch, installed memory, uptime); storage devices with capacity and I/O; GPU card shown as "Not implemented" (M4). |
+
+### Verification performed for M3
+- `cargo test` — **48 passing** (38 unit, 4 real-hardware collector, 6 IPC incl. two consecutive real snapshot events and `latest_snapshot`). clippy 0 warnings, fmt clean.
+- `npm test` — **73 passing** (history/reducer/availability logic; Overview with mocked Tauri events: rendering, live updates, hydrate, unprimed "measuring" state, unsupported I/O, backend error, unsubscribe). `npm run build` succeeds (JS 187 KB gzip, was 76 KB before Recharts).
+- **Real app (`npm run tauri dev`)**: Overview renders live data on the dev machine (screenshot checked). This run found and fixed a startup crash (`freezePrototype` vs Recharts, see ARCHITECTURE.md).
+- **Cross-check against Windows (WMI perf classes, same moment)**: total memory identical (14,956,380,160 B); available memory within ~7 % (sampled at different instants); CPU 99.9 % vs 100 %; network rates bursty, same order of magnitude.
+- **Resource use (preliminary, not a benchmark)**: dev build with React development mode, Overview open, 1 s interval — WebView2 renderer ≈ 2.6 % of total CPU (4 cores) and 116 MB working set over 20 s. The host process could not be measured because the app window was closed during the measurement. Proper release-build benchmarks are milestone 6/7.
+
 ## Feature status
 
 | Area | Status | Milestone |
 |---|---|---|
-| Overview dashboard | ⬜ Section shell only, no data | 3 |
+| Overview dashboard | ✅ | 3 |
 | CPU / Memory / Storage / Network collectors | ✅ | 2 |
-| CPU / Memory / Storage / Network pages | ⬜ | 3–4 |
-| Real-time event pipeline (sampler thread + events) | ⬜ | 3 |
+| CPU / Memory / Storage / Network pages | ⬜ | 4 |
+| Real-time event pipeline (sampler thread + events) | ✅ | 3 |
 | GPU monitoring | ⬜ | 4 |
 | Process manager | ⬜ | 4 |
 | History (SQLite) | ⬜ | 5 |
@@ -59,7 +76,10 @@ Backend only; nothing is sent to the UI yet (that is milestone 3).
 | Docs: INSTALLATION, DEVELOPMENT, CONTRIBUTING, LICENSE | ⬜ | 7 (README, ARCHITECTURE, CLAUDE.md exist) |
 
 ## Known issues / limitations
-- **CPU frequency on Windows** is the value from `CallNtPowerInformation`; on the dev machine it is a constant 3600 MHz (base clock), not the live boost clock. The UI must label it "reported frequency" (M3/M4) unless a better source is added.
+- `freezePrototype` is disabled because Recharts' `decimal.js-light` cannot run with a frozen `Object.prototype` (see ARCHITECTURE.md).
+- The sampler keeps running while the window is minimised/hidden; pausing or slowing it is planned for M6.
+- The renderer CPU cost of re-rendering six charts per second has not been optimised or measured in a release build yet (M6).
+- **CPU frequency on Windows** (backend) is the value from `CallNtPowerInformation`; on the dev machine it is a constant 3600 MHz (base clock), not the live boost clock. It is not shown in the UI yet; when it is (M4) it must be labelled "reported frequency" unless a better source is added.
 - Disk I/O counters are unavailable for some volumes (virtual/network drives); shown as unsupported.
 - Storage re-enumerates volumes every tick; cost is small (~18 ms for the whole debug tick) but should be re-measured in release and possibly reduced in M6.
 - Only verified on Windows 11 x64. Linux/macOS untested.

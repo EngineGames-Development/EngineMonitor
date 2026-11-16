@@ -24,6 +24,13 @@ describe("formatBytes", () => {
     expect(formatBytes(input)).toBe(expected);
   });
 
+  it("picks precision from the rounded value (no 4-digit results)", () => {
+    expect(formatBytes(9.997 * 1024 ** 2)).toBe("10.0 MiB");
+    expect(formatBytes(99.96 * 1024 ** 2)).toBe("100 MiB");
+    expect(formatBitRate(9_999)).toBe("80.0 kbit/s");
+    expect(formatBitRate(1_249_900)).toBe("10.0 Mbit/s");
+  });
+
   it("caps at the largest unit", () => {
     expect(splitBytes(1024 ** 7).unit).toBe("PiB");
   });

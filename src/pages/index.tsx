@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { RouteId } from "../navigation/routes";
+import { OverviewPage } from "./overview/OverviewPage";
 import { PlannedSection } from "./PlannedSection";
 import { SettingsPage } from "./SettingsPage";
 
@@ -8,18 +9,7 @@ import { SettingsPage } from "./SettingsPage";
  * pipeline yet and show no measurements (see DEVELOPMENT_STATUS.md).
  */
 export const PAGES: Record<RouteId, () => ReactElement> = {
-  overview: () => (
-    <PlannedSection
-      route="overview"
-      milestone={3}
-      features={[
-        "CPU, memory, GPU and disk utilisation with live graphs",
-        "Network upload and download speed",
-        "Uptime, operating system, CPU model, core count and installed memory",
-        "Storage devices summary",
-      ]}
-    />
-  ),
+  overview: () => <OverviewPage />,
   cpu: () => (
     <PlannedSection
       route="cpu"

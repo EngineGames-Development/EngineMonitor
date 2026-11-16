@@ -36,7 +36,7 @@
         "frame-ancestors": "'none'",
         "form-action": "'none'"
       },
-      "freezePrototype": true
+      "freezePrototype": false
     },
     "withGlobalTauri": false
   },
