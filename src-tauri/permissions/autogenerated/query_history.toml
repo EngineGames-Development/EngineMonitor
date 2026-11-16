@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-query-history"
+description = "Enables the query_history command without any pre-configured scope."
+commands.allow = ["query_history"]
+
+[[permission]]
+identifier = "deny-query-history"
+description = "Denies the query_history command without any pre-configured scope."
+commands.deny = ["query_history"]

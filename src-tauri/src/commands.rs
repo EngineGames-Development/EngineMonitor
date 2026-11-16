@@ -9,6 +9,8 @@ use tauri::State;
 
 use crate::error::{AppError, AppResult};
 use crate::events::{MonitorState, SnapshotEvent};
+use crate::history::{HistoryQuery, HistoryStatus};
+use crate::settings::HistorySettings;
 use crate::system::SystemInfo;
 
 /// Static information about the running build. Contains no user data.
@@ -67,6 +69,43 @@ pub fn terminate_process(pid: u32, start_time_secs: u64) -> AppResult<()> {
         ));
     }
     crate::processes::terminate::terminate(pid, start_time_secs)
+}
+
+#[tauri::command]
+pub fn history_settings(state: State<'_, MonitorState>) -> AppResult<HistorySettings> {
+    Ok(state.history()?.settings())
+}
+
+/// Validates and persists new history settings. Shortening retention deletes
+/// older rows right away.
+#[tauri::command]
+pub fn set_history_settings(
+    state: State<'_, MonitorState>,
+    settings: HistorySettings,
+) -> AppResult<HistorySettings> {
+    state.history()?.set_settings(settings)
+}
+
+/// Bucketed history for `[from_ms, to_ms)`, at most `max_points` points.
+#[tauri::command]
+pub fn query_history(
+    state: State<'_, MonitorState>,
+    from_ms: i64,
+    to_ms: i64,
+    max_points: u32,
+) -> AppResult<HistoryQuery> {
+    state.history()?.query(from_ms, to_ms, max_points)
+}
+
+#[tauri::command]
+pub fn history_status(state: State<'_, MonitorState>) -> AppResult<HistoryStatus> {
+    state.history()?.status()
+}
+
+/// Deletes all recorded history. The UI asks for confirmation first.
+#[tauri::command]
+pub fn clear_history(state: State<'_, MonitorState>) -> AppResult<()> {
+    state.history()?.clear()
 }
 
 /// Most recent sample, so a page can render before the next event arrives.

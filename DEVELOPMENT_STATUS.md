@@ -1,6 +1,6 @@
 # EngineMonitor — Development Status
 
-Last updated: 2026-11-16 · Current milestone: **4 (Depth) — complete** · Next: 5 (SQLite history)
+Last updated: 2026-11-16 · Current milestone: **5 (History) — complete** · Next: 6 (settings, themes, performance)
 
 Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
@@ -80,6 +80,26 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 - **Real app** (`tauri dev`): Overview (with live GPU card), CPU, Memory and Network pages captured and checked. **GPU and Processes pages were not captured in the real app** — the window was minimised during the session and was left alone; they are covered by component tests and backend tests only.
 - **Tick cost (release build, dev machine at ~100 % CPU from other work, median of 10)**: CPU usage 0.35 ms, frequency 0.01 ms, memory 0.17 ms, disks 6.4 ms, **networks 27 ms**, GPU 1.0 ms (`cargo run --release --example tick_breakdown`). Process list: 40–93 ms for ~320 processes (only while the Processes page is open).
 
+## Milestone 5 — History ✅
+
+| Item | Status | Notes |
+|---|---|---|
+| SQLite store (`history/schema.rs`, `store.rs`) | ✅ | Bundled SQLite, WAL, versioned migrations (`user_version`), refuses newer schemas, corrupt files reported (never deleted). Tables: `samples`, `volume_samples`, `settings`. |
+| Recording (`accumulator.rs`, `Recorder`) | ✅ | Window averages of every live tick + CPU peak; NULL for unmeasured; volume capacity once per minute; recording can be switched off. |
+| Writer thread (`writer.rs`) | ✅ | Bounded channel, batched transactions (6 rows / 15 s), final commit on shutdown, write errors reported not fatal, `history://updated` after commits. |
+| Retention & cleanup | ✅ | 1–365 days (default 7); at start-up, hourly, and immediately when shortened; incremental vacuum shrinks the file. |
+| Configurable interval | ✅ | 1 s–1 h (default 5 s), persisted, validated (unknown fields rejected). |
+| Commands | ✅ | `history_settings`, `set_history_settings`, `query_history` (bucketed, ≤ 2000 points, ≤ 400 days), `history_status`, `clear_history`. |
+| History page | ✅ | Ranges 15 min–30 days; CPU avg/peak + memory (+ swap), network, disk, GPU (only if recorded), storage used per volume; gaps for missing data; settings card with size estimate, retention-shrink warning, stats, confirmed clear. Refreshes on `history://updated` (no polling). |
+| Deep link | ✅ | URL hash selects the initial section (used for real-app verification). |
+
+### Verification performed for M5
+- `cargo test`: **100 passing** (84 unit incl. schema/migration/newer-schema/corrupt-file, bucketing, NULL handling, retention, file actually shrinks, writer batching/shutdown/clear/failure, accumulator, settings validation; 4 real-hardware; 12 IPC incl. end-to-end recording, `history://updated`, query, status, clear, validation, and **live monitoring continuing when the history directory is unusable**). clippy 0 warnings, fmt clean.
+- Tests found two real SQLite bugs before they shipped: `auto_vacuum` was silently ignored because WAL was enabled first, and `incremental_vacuum` via `execute_batch` freed only one page.
+- `npm test`: **113 passing** (gap insertion, volume merging, History page: range queries, reload on event, empty state, settings save + shrink warning, confirmed clear, error state; no-backend check across all sections; hash deep link). Production build succeeds (JS 196 KB gzip).
+- **Real app** (`tauri dev`, opened at `#history`): recorded 8 points in the first minute into `%APPDATA%\dev.enginemonitor.desktop\history.sqlite3`; the History page rendered CPU/memory/swap, network and disk charts and the settings card (screenshot checked).
+- **Database size measured**: 100.6 bytes/row, 11.6 MiB for 7 days at 5 s (estimate shown in the UI: 11.5 MiB).
+
 ## Feature status
 
 | Area | Status | Milestone |
@@ -90,7 +110,7 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | Real-time event pipeline (sampler thread + events) | ✅ | 3 |
 | GPU monitoring | 🟡 Windows ✅ (utilisation, VRAM); temperature unsupported; Linux/macOS unverified | 4 |
 | Process manager | ✅ | 4 |
-| History (SQLite) | ⬜ | 5 |
+| History (SQLite) | ✅ | 5 |
 | Settings: theme | ✅ (localStorage, interim) | 1 → 6 |
 | Settings: refresh, graphs, retention, startup, visibility | ⬜ Shown as "Not implemented" in UI | 6 |
 | Settings: application info | ✅ | 1 |
@@ -99,6 +119,8 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | Docs: INSTALLATION, DEVELOPMENT, CONTRIBUTING, LICENSE | ⬜ | 7 (README, ARCHITECTURE, CLAUDE.md exist) |
 
 ## Known issues / limitations
+- The real-app verification session left a small real history database (a few minutes of data) in `%APPDATA%\dev.enginemonitor.desktop\`; it is the app's normal data file and can be cleared from the History page.
+- History records only while EngineMonitor runs (no background service); gaps are shown for periods it was closed.
 - **Network refresh is the most expensive part of a tick (~27 ms, release).** `sysinfo` calls `GetIfTable2` every tick, which enumerates all (incl. hidden filter) interfaces. Planned M6 fix: query known interfaces with `GetIfEntry2`.
 - Process list collection costs 40–93 ms per tick for ~320 processes; it only runs while the Processes page is open.
 - GPU temperature is never available (no vendor-specific provider); NVML is not implemented because it cannot be verified without NVIDIA hardware.

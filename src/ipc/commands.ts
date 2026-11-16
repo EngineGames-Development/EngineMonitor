@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { toAppError, type AppError } from "./errors";
-import type { SnapshotEvent, SystemInfo } from "./types";
+import type { HistoryQuery, HistorySettings, HistoryStatus, SnapshotEvent, SystemInfo } from "./types";
 
 /** Mirror of `commands::AppInfo` in Rust. */
 export interface AppInfo {
@@ -48,6 +48,27 @@ export function setProcessMonitoring(enabled: boolean): Promise<CommandResult<nu
  */
 export function terminateProcess(pid: number, startTimeSecs: number): Promise<CommandResult<null>> {
   return call<null>("terminate_process", { pid, startTimeSecs });
+}
+
+export function getHistorySettings(): Promise<CommandResult<HistorySettings>> {
+  return call<HistorySettings>("history_settings");
+}
+
+export function setHistorySettings(settings: HistorySettings): Promise<CommandResult<HistorySettings>> {
+  return call<HistorySettings>("set_history_settings", { settings });
+}
+
+export function queryHistory(fromMs: number, toMs: number, maxPoints: number): Promise<CommandResult<HistoryQuery>> {
+  return call<HistoryQuery>("query_history", { fromMs, toMs, maxPoints });
+}
+
+export function getHistoryStatus(): Promise<CommandResult<HistoryStatus>> {
+  return call<HistoryStatus>("history_status");
+}
+
+/** Deletes all recorded history. Callers must confirm with the user first. */
+export function clearHistory(): Promise<CommandResult<null>> {
+  return call<null>("clear_history");
 }
 
 /** Latest sample, or null before the first tick. One-shot: live data arrives as events. */

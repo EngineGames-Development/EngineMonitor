@@ -39,6 +39,17 @@ describe("App navigation", () => {
     expect(main.scrollTop).toBe(0);
   });
 
+  it("opens the section named in the URL hash, ignoring invalid ones", () => {
+    window.location.hash = "#network";
+    const { unmount } = render(<App />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Network");
+    unmount();
+    window.location.hash = "#not-a-section";
+    render(<App />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Overview");
+    window.location.hash = "";
+  });
+
   it("supports Ctrl+digit shortcuts", () => {
     render(<App />);
     fireEvent.keyDown(window, { key: "5", ctrlKey: true });
@@ -47,13 +58,15 @@ describe("App navigation", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Settings");
   });
 
-  it("never shows fabricated metrics on unimplemented sections", async () => {
+  it("never shows fabricated metrics on any section without a backend", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: /^History/ }));
-    expect(screen.getByText("Not implemented")).toBeInTheDocument();
-    expect(screen.queryByRole("meter")).not.toBeInTheDocument();
-    expect(screen.queryByText(/\d+(\.\d+)?\s?%/)).not.toBeInTheDocument();
+    for (const name of [/^CPU/, /^Memory/, /^GPU/, /^Processes/, /^Storage/, /^Network/, /^History/]) {
+      await user.click(screen.getByRole("button", { name }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByRole("meter")).not.toBeInTheDocument();
+      expect(screen.queryByText(/\d+(\.\d+)?\s?%/)).not.toBeInTheDocument();
+    }
   });
 
   it("shows no measurements on the Overview when the backend is missing", async () => {

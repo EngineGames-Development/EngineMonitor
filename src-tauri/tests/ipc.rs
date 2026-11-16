@@ -15,11 +15,23 @@ fn app() -> (
     let app = enginemonitor_lib::configure(mock_builder())
         .build(tauri::generate_context!())
         .expect("failed to build app");
-    enginemonitor_lib::init(&app);
+    enginemonitor_lib::init_with_data_dir(&app, Some(temp_data_dir()));
     let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .expect("failed to build main window");
     (app, webview)
+}
+
+/// A fresh directory per test app so tests never touch real user history.
+/// Left in the OS temp dir (cleaned by the OS); each is a few KB.
+fn temp_data_dir() -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    std::env::temp_dir().join(format!(
+        "enginemonitor-ipc-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 fn request(cmd: &str) -> InvokeRequest {
@@ -209,4 +221,153 @@ fn terminate_process_validates_input_and_refuses_self() {
     )
     .expect_err("must refuse self");
     assert_eq!(err["kind"], "invalid_argument");
+}
+
+#[test]
+fn history_settings_roundtrip_and_validation() {
+    let (_app, webview) = app();
+    let defaults: Value = get_ipc_response(&webview, request("history_settings"))
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(defaults["intervalSecs"], 5);
+    assert_eq!(defaults["retentionDays"], 7);
+
+    let bad = get_ipc_response(
+        &webview,
+        request_with(
+            "set_history_settings",
+            serde_json::json!({ "settings": { "enabled": true, "intervalSecs": 0, "retentionDays": 7 } }),
+        ),
+    )
+    .expect_err("interval 0 must be rejected");
+    assert_eq!(bad["kind"], "invalid_argument");
+
+    let unknown_field = get_ipc_response(
+        &webview,
+        request_with(
+            "set_history_settings",
+            serde_json::json!({ "settings": { "enabled": true, "intervalSecs": 5, "retentionDays": 7, "path": "C:/" } }),
+        ),
+    );
+    assert!(unknown_field.is_err(), "unknown fields are rejected");
+
+    get_ipc_response(
+        &webview,
+        request_with(
+            "set_history_settings",
+            serde_json::json!({ "settings": { "enabled": true, "intervalSecs": 30, "retentionDays": 90 } }),
+        ),
+    )
+    .expect("valid settings");
+    let now: Value = get_ipc_response(&webview, request("history_settings"))
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(now["intervalSecs"], 30);
+}
+
+#[test]
+fn query_history_validates_range() {
+    let (_app, webview) = app();
+    let err = get_ipc_response(
+        &webview,
+        request_with(
+            "query_history",
+            serde_json::json!({ "fromMs": 10, "toMs": 5, "maxPoints": 100 }),
+        ),
+    )
+    .expect_err("reversed range");
+    assert_eq!(err["kind"], "invalid_argument");
+}
+
+#[test]
+fn records_history_end_to_end_and_notifies() {
+    use std::sync::mpsc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use tauri::Listener;
+
+    let (app, webview) = app();
+    let (tx, rx) = mpsc::channel::<()>();
+    app.listen_any(
+        enginemonitor_lib::events::HISTORY_UPDATED_EVENT,
+        move |_| {
+            let _ = tx.send(());
+        },
+    );
+    // 1 s windows: the writer commits after 6 records (~7 s).
+    get_ipc_response(
+        &webview,
+        request_with(
+            "set_history_settings",
+            serde_json::json!({ "settings": { "enabled": true, "intervalSecs": 1, "retentionDays": 7 } }),
+        ),
+    )
+    .unwrap();
+    rx.recv_timeout(Duration::from_secs(20))
+        .expect("history://updated after the first committed batch");
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let q: Value = get_ipc_response(
+        &webview,
+        request_with(
+            "query_history",
+            serde_json::json!({ "fromMs": now - 60_000, "toMs": now + 1_000, "maxPoints": 120 }),
+        ),
+    )
+    .unwrap()
+    .deserialize()
+    .unwrap();
+    let points = q["points"].as_array().unwrap();
+    assert!(points.len() >= 5, "got {} points", points.len());
+    assert!(points
+        .iter()
+        .any(|p| p["memory"].as_f64().unwrap_or(0.0) > 0.0));
+
+    let status: Value = get_ipc_response(&webview, request("history_status"))
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert!(status["stats"]["rows"].as_i64().unwrap() >= 5);
+    assert!(status["stats"]["sizeBytes"].as_u64().unwrap() > 0);
+    assert!(status["lastError"].is_null());
+
+    get_ipc_response(&webview, request("clear_history")).expect("clear");
+    let status: Value = get_ipc_response(&webview, request("history_status"))
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(status["stats"]["rows"], 0);
+}
+
+#[test]
+fn history_failure_does_not_stop_live_monitoring() {
+    use std::time::Duration;
+    use tauri::Listener;
+
+    let app = enginemonitor_lib::configure(mock_builder())
+        .build(tauri::generate_context!())
+        .unwrap();
+    // A data "directory" that is actually a file: history cannot open.
+    let blocker = temp_data_dir();
+    std::fs::write(&blocker, b"not a directory").unwrap();
+    enginemonitor_lib::init_with_data_dir(&app, Some(blocker.clone()));
+    let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+
+    let err =
+        get_ipc_response(&webview, request("history_status")).expect_err("history unavailable");
+    assert_eq!(err["kind"], "internal");
+
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    app.listen_any(enginemonitor_lib::events::SNAPSHOT_EVENT, move |_| {
+        let _ = tx.send(());
+    });
+    rx.recv_timeout(Duration::from_secs(5))
+        .expect("snapshots still flow");
+    let _ = std::fs::remove_file(blocker);
 }

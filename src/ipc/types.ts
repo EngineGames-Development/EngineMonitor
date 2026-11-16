@@ -167,3 +167,46 @@ export interface SnapshotEvent {
 }
 
 export const SNAPSHOT_EVENT = "metrics://snapshot";
+export const HISTORY_UPDATED_EVENT = "history://updated";
+
+/** `settings::HistorySettings`. */
+export interface HistorySettings {
+  enabled: boolean;
+  intervalSecs: number;
+  retentionDays: number;
+}
+
+/** `history::store::HistoryPoint`: bucket averages (cpuMax is the maximum). */
+export interface HistoryPointDto {
+  t: number;
+  cpu: number | null;
+  cpuMax: number | null;
+  memory: number | null;
+  swap: number | null;
+  netRx: number | null;
+  netTx: number | null;
+  diskRead: number | null;
+  diskWrite: number | null;
+  gpu: number | null;
+}
+
+export interface VolumeSeries {
+  mountPoint: string;
+  points: { t: number; usedPercent: number }[];
+}
+
+export interface HistoryQuery {
+  fromMs: number;
+  toMs: number;
+  bucketMs: number;
+  points: HistoryPointDto[];
+  volumes: VolumeSeries[];
+}
+
+export interface HistoryStatus {
+  settings: HistorySettings;
+  stats: { rows: number; oldestMs: number | null; newestMs: number | null; sizeBytes: number };
+  estimatedSizeBytes: number;
+  lastError: string | null;
+  databasePath: string;
+}

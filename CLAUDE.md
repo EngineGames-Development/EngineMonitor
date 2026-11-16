@@ -47,6 +47,14 @@ Collectors:
 - On Windows, GPU data comes from the own DXGI + PDH provider (`gpu/windows_provider.rs`), not `sysinfo` (whose Windows GPU numbers were wrong). Any `unsafe` code lives in that file and in `processes/terminate.rs`, with SAFETY comments.
 - Processes are collected only while `set_process_monitoring(true)` is in effect (the Processes page). Identify a process by (PID, start time), never by PID alone; `terminate_process` requires both.
 - `cargo run --release --example tick_breakdown` times each collector; use it before and after performance work.
+
+History (SQLite, `history/`):
+- **Location:** `<app data dir>/history.sqlite3` (on Windows, `%APPDATA%\dev.enginemonitor.desktop`).
+- **Schema changes:** add a new entry to `MIGRATIONS` in `history/schema.rs`. Never edit a released migration.
+- **Writes:** only the writer thread writes history rows. The sampler hands records over with a non-blocking `try_send`, and commands read through `History`'s own connection.
+- **Tests:** integration tests must call `init_with_data_dir(&app, Some(temp_dir))`, never `init(&app)`, so they don't write to the real user database.
+- **SQLite pitfalls (covered by tests):** set `auto_vacuum` before WAL on a new database, and step `PRAGMA incremental_vacuum` to completion (`execute_batch` frees only one page).
+- **Size check:** `cargo run --release --example history_size` measures bytes per row.
 - Each domain module (`cpu/`, `memory/`, `storage/`, `network/`) has a pure `build`/`build_sample` function that takes plain values. Unit tests target that function; a thin `sample()` reads from `sysinfo`.
 - Missing values: use `Option` for "not measured this tick" (first tick, counter reset). Use `reading::Reading<T>` (`ok` / `unsupported` / `error`, serialised with a `status` tag) where availability depends on the platform.
 - `sysinfo` reports unknown CPU frequency as 0 MHz and missing disk I/O counters as 0 bytes. Treat both as unavailable, not as real zeros.
@@ -63,7 +71,8 @@ Rust types sent to the frontend use `#[serde(rename_all = "camelCase")]` and are
 
 **Frontend structure.**
 - **Navigation:** state-based, with no router. The `ROUTES` order in `src/navigation/routes.ts` sets both sidebar order and the Ctrl/Cmd+1..9 shortcuts.
-- **Pages:** `src/pages/index.tsx` maps each `RouteId` to a page. A section with no collector renders `PlannedSection`, which shows the plan and no numbers. `src/App.test.tsx` asserts that no meters or percentages appear on such a section (it currently uses CPU); point it at another unimplemented section when you implement CPU. Test payloads come from `src/test/fixtures.ts`, which is for tests only.
+- **Pages:** `src/pages/index.tsx` maps each `RouteId` to a page. Live pages use `LivePage` (`src/pages/shared.tsx`) for header, error and loading states. `src/App.test.tsx` asserts that no section shows meters or percentages without a backend. Test payloads come from `src/test/fixtures.ts`, which is for tests only.
+- **Deep links:** the URL hash selects the initial section (`#history`). For real-app checks of a specific page, run `npx tauri dev --config '{"build":{"devUrl":"http://localhost:1420/#history"}}'`, so no keyboard automation is needed.
 - **Theming:** `src/styles/index.css` defines raw `--em-*` variables per `[data-theme]`, and `@theme inline` maps them to semantic Tailwind utilities (`bg-surface`, `bg-raised`, `border-line`, `text-fg-muted`, `text-primary`, …). Use those utilities, not raw colours, so both themes work. Chart colours are `--em-chart-*`.
 - **Theme preference:** stored in localStorage by `src/theme/` for now. It is planned to move to the SQLite settings store in milestone 6.
 - **Shared components:** design-system components and the hand-drawn icon set live in `src/design/` (import from `src/design/index.ts`). New icons go into the `paths` map in `Icon.tsx`. The project avoids extra icon, router, font and `clsx` dependencies on purpose.

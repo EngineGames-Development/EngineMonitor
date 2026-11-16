@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { routeForShortcut, type RouteId } from "./routes";
+import { isRouteId, routeForShortcut, type RouteId } from "./routes";
 
 interface NavigationContextValue {
   current: RouteId;
@@ -8,12 +8,21 @@ interface NavigationContextValue {
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
 
+/** Section named by the URL hash (e.g. `#history`), if valid. Allows deep links. */
+export function routeFromHash(hash: string): RouteId | null {
+  const id = hash.replace(/^#/, "");
+  return isRouteId(id) ? id : null;
+}
+
 /**
  * Minimal typed navigation. A desktop app with nine fixed sections does not
- * need URL routing; this keeps the bundle small and the state explicit.
+ * need URL routing; this keeps the bundle small and the state explicit. The
+ * URL hash is only read once at start-up, as a deep link.
  */
-export function NavigationProvider({ children, initial = "overview" }: { children: ReactNode; initial?: RouteId }) {
-  const [current, setCurrent] = useState<RouteId>(initial);
+export function NavigationProvider({ children, initial }: { children: ReactNode; initial?: RouteId }) {
+  const [current, setCurrent] = useState<RouteId>(
+    () => initial ?? (typeof window !== "undefined" ? routeFromHash(window.location.hash) : null) ?? "overview",
+  );
 
   // Ctrl/Cmd + 1..9 jumps to a section.
   useEffect(() => {

@@ -9,7 +9,7 @@ with the code; sections that describe work not yet implemented are marked
 ```
 ┌────────────────────────── Tauri process (Rust) ──────────────────────────┐
 │                                                                          │
-│  Sampler thread (M3, done)             History writer (planned, M5)      │
+│  Sampler thread (M3, done)             History writer (M5, done)         │
 │  ├─ owns SystemCollector (M2, done)    ├─ owns rusqlite::Connection     │
 │  ├─ refreshes at user interval          ├─ batched INSERTs in one txn    │
 │  ├─ builds a compact Snapshot           └─ periodic retention cleanup    │
@@ -18,8 +18,8 @@ with the code; sections that describe work not yet implemented are marked
 │  Commands (validated, minimal surface)             │                     │
 │  ├─ app_info               (M1, implemented)       │                     │
 │  ├─ system_info / latest_snapshot (M3, implemented)│                     │
-│  ├─ get_settings / update_settings (planned)       │                     │
-│  ├─ query_history          (planned)               │                     │
+│  ├─ history_settings / set_history_settings (M5)   │                     │
+│  ├─ query_history / history_status / clear_history │                     │
 │  ├─ set_process_monitoring (M4, implemented)       │                     │
 │  └─ terminate_process      (M4, guarded)           │                     │
 └────────────────────────────────────────────────────┼─────────────────────┘
@@ -45,7 +45,12 @@ with the code; sections that describe work not yet implemented are marked
 | **GPU behind a trait, isolated.** | One `GpuProvider` per platform: Windows uses an own DXGI + PDH provider (`gpu/windows_provider.rs`); elsewhere `sysinfo`'s GPU support. `GpuMonitor` wraps provider init and sampling in `catch_unwind`; a failing or panicking provider becomes a `Reading::Error` for the GPU section only (the release profile uses `panic = "unwind"` for this). Providers may hold thread-affine OS handles, so the sampler builds them *on its own thread* (`Sampler::spawn_with`) instead of requiring `Send`. |
 | **Own Windows GPU provider instead of `sysinfo`'s.** | On the dev machine `sysinfo` reported 92 % GPU (it sums all engines: 3D 49 % + video 43 %) and 0 bytes of dedicated memory (wrong adapter). The own provider follows Task Manager (busiest engine type per adapter, matched by LUID) and matched Windows' counters byte-for-byte for memory. |
 | **SQLite via `rusqlite` (bundled).** | No system SQLite dependency, deterministic builds, synchronous API that fits a dedicated writer thread (no async runtime required). |
-| **History is downsampled.** | Live data is held in memory (ring buffers). Only every *n*-th sample (configurable, default 5 s) is written to disk, in batched transactions, with a retention window enforced by periodic `DELETE`s. |
+| **History is averaged, not sampled.** | Live data stays in memory (capped history in the frontend). The sampler-side `Recorder` averages every live tick within a recording window (default 5 s, configurable 1 s–1 h) into one row, plus the CPU peak, so spikes are not lost to point sampling. Unmeasured values stay NULL, never 0. |
+| **Single writer thread, batched.** | `history::writer` owns the only write connection; records arrive over a bounded channel (`try_send`, so a slow disk can never block sampling) and are committed 6 at a time or every 15 s. Commands read through a separate connection; WAL mode lets both run concurrently. After each commit the writer emits `history://updated` so the History page refreshes without polling. |
+| **Bounded database.** | Retention (default 7 days, 1–365) is enforced at start-up, hourly and immediately when retention is shortened. `auto_vacuum = INCREMENTAL` plus a fully stepped `PRAGMA incremental_vacuum` returns freed pages so the file actually shrinks (both verified by tests; two SQLite pitfalls were found this way). Measured size: 100.6 bytes/row, i.e. 11.6 MiB for 7 days at 5 s (`cargo run --release --example history_size`). |
+| **Queries are bucketed in SQL.** | `query_history(fromMs, toMs, maxPoints ≤ 2000)` groups rows into `max(range / maxPoints, interval)` buckets with `AVG`/`MAX`, so any range returns a bounded payload. The frontend inserts gaps where buckets are missing. |
+| **History failure is isolated.** | If the database cannot be opened (corrupt file, unwritable directory, newer schema), history commands return that error and live monitoring continues. The file is never deleted automatically. |
+| **Settings in the same database.** | `settings` table of JSON values per group (`history` now; app settings in M6). Unknown fields are rejected (`deny_unknown_fields`); invalid stored values fall back to defaults. |
 | **No routing / icon / font dependencies.** | Navigation is a small typed state machine; icons are a hand-drawn SVG set; fonts use the OS UI stack. Fewer dependencies, no network fetches, smaller bundle. |
 | **Minimal Tauri permissions.** | No `fs`, `shell`, `http` or `opener` plugins. The capability file grants only core event + window permissions and our own commands. A strict CSP blocks remote resources. |
 | **`freezePrototype` is off.** | Tauri's `freezePrototype` freezes `Object.prototype`. Recharts depends on `decimal.js-light`, which assigns `valueOf` on its own prototype; with a frozen `Object.prototype` that assignment throws (the JS "override mistake") and the UI fails to start. Found in the real app in M3 (jsdom tests do not freeze prototypes). Since Recharts is a required dependency, the option is disabled. Prototype-pollution exposure remains low: no remote content is loaded (CSP `default-src 'self'`), and the IPC surface is an explicit allow-list. |
@@ -84,7 +89,8 @@ EngineMonitor/
       ├─ gpu/                 GpuProvider trait, GpuMonitor, windows_provider (DXGI+PDH), sysinfo_provider (non-Windows)
       ├─ processes/           ProcessCollector, terminate (guarded)
       ├─ events/              sampler thread (generic, Condvar-timed) + MonitorState (M3)
-      ├─ history/ settings/               (planned, M5–M6)
+      ├─ history/             schema (migrations), store (SQL), accumulator, writer thread, History/Recorder
+      ├─ settings/            validated settings persisted in SQLite (history group; app settings in M6)
    ├─ tests/                  ipc.rs (IPC + ACL), collectors.rs (real hardware)
    └─ examples/snapshot.rs    prints a real snapshot as JSON
 ```
@@ -98,7 +104,7 @@ EngineMonitor/
 | `serde`, `serde_json` | IPC serialisation |
 | `thiserror` | typed errors |
 | `sysinfo` 0.40 (features `system`, `disk`, `network`; default features off) | CPU, memory, disks, networks; processes from M4 |
-| `rusqlite` + `bundled` (planned, M5) | history + settings persistence |
+| `rusqlite` 0.43 + `bundled` | history + settings persistence (SQLite compiled in; no system library) |
 | `nvml-wrapper` (not added) | NVIDIA temperature would need it; not implemented because it cannot be verified without NVIDIA hardware |
 | `windows` 0.62 (Windows only; same version `sysinfo` already uses) | DXGI adapters, PDH GPU counters, `OpenProcess`/`TerminateProcess` |
 | `tauri-plugin-autostart` (planned, M6) | "launch at login" setting |

@@ -18,6 +18,10 @@ export interface TimeSeriesChartProps<K extends string, D extends { t: number } 
   height: number;
   /** Visible time window in ms; the x-axis always ends at the newest point. */
   windowMs?: number;
+  /** Fixed x-range (ms); overrides `windowMs`. Used for historical ranges. */
+  xDomain?: [number, number];
+  /** Axis/tooltip time format: clock time, or date + time for long ranges. */
+  timeFormat?: "time" | "datetime";
   /** Compact sparkline: no axes, grid or tooltip. */
   sparkline?: boolean;
   /** Accessible description of what the chart shows. */
@@ -26,6 +30,10 @@ export interface TimeSeriesChartProps<K extends string, D extends { t: number } 
 
 function formatClock(t: number): string {
   return new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatDateTime(t: number): string {
+  return new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 /**
@@ -41,10 +49,13 @@ export function TimeSeriesChart<K extends string, D extends { t: number } & Part
   windowMs = 5 * 60_000,
   sparkline = false,
   label,
+  xDomain: fixedDomain,
+  timeFormat = "time",
 }: TimeSeriesChartProps<K, D>) {
+  const formatTime = timeFormat === "datetime" ? formatDateTime : formatClock;
   const gradientBase = useId().replace(/:/g, "");
   const newest = data.length > 0 ? data[data.length - 1]!.t : 0;
-  const xDomain: [number, number] = [newest - windowMs, newest];
+  const xDomain: [number, number] = fixedDomain ?? [newest - windowMs, newest];
 
   return (
     <div role="img" aria-label={label} style={{ height }} className="w-full min-w-0">
@@ -68,7 +79,7 @@ export function TimeSeriesChart<K extends string, D extends { t: number } & Part
             domain={xDomain}
             allowDataOverflow
             hide={sparkline}
-            tickFormatter={formatClock}
+            tickFormatter={formatTime}
             tick={{ fill: "var(--em-fg-subtle)", fontSize: 11 }}
             tickLine={false}
             axisLine={false}
@@ -87,7 +98,7 @@ export function TimeSeriesChart<K extends string, D extends { t: number } & Part
           {!sparkline && (
             <Tooltip
               isAnimationActive={false}
-              labelFormatter={(t) => formatClock(Number(t))}
+              labelFormatter={(t) => formatTime(Number(t))}
               formatter={(v, name) => [typeof v === "number" ? format(v) : "—", name]}
               contentStyle={{
                 background: "var(--em-overlay)",

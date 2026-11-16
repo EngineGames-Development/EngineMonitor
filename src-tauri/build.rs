@@ -7,6 +7,11 @@ const COMMANDS: &[&str] = &[
     "latest_snapshot",
     "set_process_monitoring",
     "terminate_process",
+    "history_settings",
+    "set_history_settings",
+    "query_history",
+    "history_status",
+    "clear_history",
 ];
 
 fn main() {
