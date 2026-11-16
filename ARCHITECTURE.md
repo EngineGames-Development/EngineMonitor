@@ -9,8 +9,8 @@ with the code; sections that describe work not yet implemented are marked
 ```
 ┌────────────────────────── Tauri process (Rust) ──────────────────────────┐
 │                                                                          │
-│  Sampler thread (planned, M2)          History writer (planned, M5)      │
-│  ├─ owns sysinfo::System/Networks/Disks ├─ owns rusqlite::Connection     │
+│  Sampler thread (planned, M3)          History writer (planned, M5)      │
+│  ├─ owns SystemCollector (M2, done)    ├─ owns rusqlite::Connection     │
 │  ├─ refreshes at user interval          ├─ batched INSERTs in one txn    │
 │  ├─ builds a compact Snapshot           └─ periodic retention cleanup    │
 │  └─ emits `metrics://snapshot` event ──────────────┐                     │
@@ -71,8 +71,14 @@ EngineMonitor/
       ├─ main.rs, lib.rs      entry + Tauri builder
       ├─ error.rs             AppError (serialisable to the frontend)
       ├─ commands.rs          command handlers (thin; validate + delegate)
-      ├─ system/  cpu/  memory/  gpu/  processes/      (planned, M2–M4)
-      ├─ storage/ network/   history/  settings/  events/ (planned, M2–M6)
+      ├─ rate.rs              counter → rate maths (resets, vanished keys)
+      ├─ reading.rs           Reading<T>: ok / unsupported / error
+      ├─ system/              OS facts + SystemCollector (owns all sysinfo state)
+      ├─ cpu/ memory/ storage/ network/   per-domain collectors (M2, done)
+      ├─ gpu/ processes/                  (planned, M4)
+      ├─ history/ settings/ events/       (planned, M3–M6)
+   ├─ tests/                  ipc.rs (IPC + ACL), collectors.rs (real hardware)
+   └─ examples/snapshot.rs    prints a real snapshot as JSON
 ```
 
 ## 3. Dependencies
@@ -83,7 +89,7 @@ EngineMonitor/
 | `tauri` 2.x, `tauri-build` 2.x | desktop shell, IPC, events |
 | `serde`, `serde_json` | IPC serialisation |
 | `thiserror` | typed errors |
-| `sysinfo` (planned, M2) | CPU, memory, disks, networks, processes |
+| `sysinfo` 0.40 (features `system`, `disk`, `network`; default features off) | CPU, memory, disks, networks; processes from M4 |
 | `rusqlite` + `bundled` (planned, M5) | history + settings persistence |
 | `nvml-wrapper` (planned, M4) | NVIDIA GPU metrics; loads `nvml.dll`/`libnvidia-ml.so` at runtime, so non-NVIDIA systems are unaffected |
 | `windows` crate (planned, M4, Windows only) | PDH GPU-engine counters + DXGI adapter memory |
@@ -111,10 +117,12 @@ EngineMonitor/
 
 ## 5. Known technical limitations
 
-- **GPU metrics are vendor- and OS-specific.** `sysinfo` has no GPU support. NVIDIA via NVML is reliable on Windows/Linux. On Windows, AMD/Intel utilisation can come from PDH "GPU Engine" counters and VRAM from DXGI, but temperature is generally *not* exposed without vendor SDKs. macOS exposes very little without private APIs. Unsupported values are shown as unsupported.
+- **GPU metrics are vendor- and OS-specific.** `sysinfo` 0.40 has an optional `gpu` feature whose coverage will be evaluated in M4. NVIDIA via NVML is reliable on Windows/Linux. On Windows, AMD/Intel utilisation can come from PDH "GPU Engine" counters and VRAM from DXGI, but temperature is generally *not* exposed without vendor SDKs. macOS exposes very little without private APIs. Unsupported values are shown as unsupported.
 - **CPU temperature** is usually unavailable on Windows without administrator rights or a kernel driver; it will not be faked.
 - **CPU load average** exists on Linux/macOS only; Windows has no equivalent and it is shown as unavailable there.
 - **Per-process executable paths** of protected/system processes are hidden by the OS for non-elevated users; they will display as "access denied", not guessed.
 - **Process termination** can fail for protected processes or processes owned by other users; the error is reported verbatim.
-- **Disk I/O** in `sysinfo` is per-process-aggregated on some platforms; per-disk activity accuracy varies by OS and is labelled accordingly.
+- **Disk I/O** comes from per-volume cumulative counters (`IOCTL_DISK_PERFORMANCE` on Windows). Some volumes (virtual drives such as Google Drive, some network/removable media) report no counters; they are shown as "I/O unavailable", not as idle.
+- **CPU frequency on Windows** is what `sysinfo` reads from `CallNtPowerInformation`. On the development machine (Ryzen 3 3200G) it is a constant 3600 MHz, i.e. the base clock, not the live boost clock Task Manager shows. It must be labelled "reported frequency" in the UI until a better source (PDH `% Processor Performance`) is evaluated.
+- **Loopback** is excluded from aggregate network speed. Windows does not list a loopback interface through `sysinfo` at all.
 - **Development environment:** this repository is currently developed and verified on Windows 11 (x64). Linux and macOS builds are expected to work through Tauri/`sysinfo` but have not been verified on real hardware yet.

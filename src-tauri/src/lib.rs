@@ -4,7 +4,14 @@
 //! milestone by milestone; only implemented modules are declared here.
 
 pub mod commands;
+pub mod cpu;
 pub mod error;
+pub mod memory;
+pub mod network;
+pub mod rate;
+pub mod reading;
+pub mod storage;
+pub mod system;
 
 use tauri::{Builder, Runtime};
 
