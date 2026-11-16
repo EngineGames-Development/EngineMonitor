@@ -6,6 +6,7 @@
 
 use std::time::Duration;
 
+use enginemonitor_lib::gpu::GpuMonitor;
 use enginemonitor_lib::reading::Reading;
 use enginemonitor_lib::system::SystemCollector;
 
@@ -28,8 +29,9 @@ fn system_info_is_populated() {
 #[test]
 fn first_sample_is_unprimed_second_is_measured() {
     let mut c = SystemCollector::new().expect("collector init");
+    let mut gpu = GpuMonitor::new();
 
-    let first = c.sample();
+    let first = c.sample(&mut gpu);
     assert_eq!(
         first.cpu.usage_percent, None,
         "first tick must not claim 0 %"
@@ -37,7 +39,7 @@ fn first_sample_is_unprimed_second_is_measured() {
     assert_eq!(first.network.receive_bytes_per_sec, None);
 
     std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL.max(Duration::from_millis(300)));
-    let s = c.sample();
+    let s = c.sample(&mut gpu);
 
     let usage = s.cpu.usage_percent.expect("second tick has CPU usage") as f64;
     assert!(in_percent_range(usage), "cpu usage {usage}");
@@ -86,7 +88,8 @@ fn first_sample_is_unprimed_second_is_measured() {
 #[test]
 fn load_average_matches_platform_support() {
     let mut c = SystemCollector::new().expect("collector init");
-    let s = c.sample();
+    let mut gpu = GpuMonitor::new();
+    let s = c.sample(&mut gpu);
     if cfg!(windows) {
         assert!(
             matches!(s.cpu.load_average, Reading::Unsupported { .. }),
@@ -100,7 +103,8 @@ fn load_average_matches_platform_support() {
 #[test]
 fn snapshot_serialises_to_camel_case_json() {
     let mut c = SystemCollector::new().expect("collector init");
-    let json = serde_json::to_value(c.sample()).unwrap();
+    let mut gpu = GpuMonitor::new();
+    let json = serde_json::to_value(c.sample(&mut gpu)).unwrap();
     for key in [
         "timestampMs",
         "uptimeSecs",

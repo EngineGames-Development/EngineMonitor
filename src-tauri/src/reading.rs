@@ -8,16 +8,25 @@
 //! Serialised (internally tagged) as one of:
 //! `{ "status": "ok", "value": … }`,
 //! `{ "status": "unsupported", "reason": "…" }`,
-//! `{ "status": "error", "message": "…" }`.
+//! `{ "status": "error", "message": "…" }`,
+//! `{ "status": "pending" }` (measured from deltas; needs another sample).
 
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum Reading<T> {
-    Ok { value: T },
-    Unsupported { reason: String },
-    Error { message: String },
+    Ok {
+        value: T,
+    },
+    Unsupported {
+        reason: String,
+    },
+    Error {
+        message: String,
+    },
+    /// Derived from the difference between two samples; not available yet.
+    Pending,
 }
 
 impl<T> Reading<T> {
@@ -49,6 +58,7 @@ impl<T> Reading<T> {
             Reading::Ok { value } => Reading::Ok { value: f(value) },
             Reading::Unsupported { reason } => Reading::Unsupported { reason },
             Reading::Error { message } => Reading::Error { message },
+            Reading::Pending => Reading::Pending,
         }
     }
 
@@ -95,6 +105,13 @@ mod tests {
             Reading::Error { message } => assert!(message.contains("denied")),
             other => panic!("expected error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn pending_serialises_without_payload() {
+        let p = serde_json::to_value(Reading::<f32>::Pending).unwrap();
+        assert_eq!(p, serde_json::json!({ "status": "pending" }));
+        assert_eq!(Reading::<u8>::Pending.map(|v| v + 1), Reading::Pending);
     }
 
     #[test]

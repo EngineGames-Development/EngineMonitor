@@ -1,6 +1,6 @@
 # EngineMonitor — Development Status
 
-Last updated: 2026-11-16 · Current milestone: **3 (Live data) — complete** · Next: 4 (processes, GPU, dedicated pages)
+Last updated: 2026-11-16 · Current milestone: **4 (Depth) — complete** · Next: 5 (SQLite history)
 
 Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
@@ -57,16 +57,39 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 - **Cross-check against Windows (WMI perf classes, same moment)**: total memory identical (14,956,380,160 B); available memory within ~7 % (sampled at different instants); CPU 99.9 % vs 100 %; network rates bursty, same order of magnitude.
 - **Resource use (preliminary, not a benchmark)**: dev build with React development mode, Overview open, 1 s interval — WebView2 renderer ≈ 2.6 % of total CPU (4 cores) and 116 MB working set over 20 s. The host process could not be measured because the app window was closed during the measurement. Proper release-build benchmarks are milestone 6/7.
 
+## Milestone 4 — Depth ✅ (with gaps listed below)
+
+| Item | Status | Notes |
+|---|---|---|
+| Process collection (`processes/`) | ✅ | PID, parent, name, executable path (null when the OS hides it), status, CPU % of whole machine, resident + virtual memory, disk read/write B/s, start time, run time. Keyed by (PID, start time) so reused PIDs never inherit counters. No command lines/environment collected. Only while the Processes page is open (`set_process_monitoring`). |
+| Process termination | ✅ | `terminate_process(pid, startTimeSecs)`: refuses PID 0, self, session-critical processes; Windows uses `OpenProcess`/`TerminateProcess` with race-free start-time check and precise "access denied" / "not found" errors. Confirmation dialog in UI. |
+| GPU provider architecture (`gpu/`) | ✅ | `GpuProvider` trait; `GpuMonitor` contains init failures, errors and panics. Windows: own DXGI + PDH provider. Linux/macOS: `sysinfo` provider (unverified). Temperature: unsupported everywhere (no vendor provider). |
+| `Reading::Pending` | ✅ | For delta-based values on their first sample (GPU utilisation). |
+| Processes page | ✅ | Search (name/path/exact PID), filters (All / Using CPU / Path visible), sortable columns with unknown values last, virtualised table (`useVirtualRows`), detail panel with parent link, end-process flow with confirmation, OS-error display, own process protected. |
+| CPU page | ✅ | Utilisation, "Reported frequency" (labelled as Windows value), cores, load average (unsupported badge on Windows), 5-minute chart, per-core meters + frequency. |
+| Memory page | ✅ | Used/available/total, swap ("No swap configured" instead of 0 %), chart, meters. |
+| GPU page | ✅ | Per-adapter utilisation, dedicated VRAM, temperature (unsupported), busiest-adapter chart; explicit unsupported/error/no-GPU states. Overview GPU card now live. |
+| Storage page | ✅ | Totals, disk activity chart, volume list. |
+| Network page | ✅ | Rates, traffic chart, interface table (state, addresses, MAC, totals, link speed, MTU). |
+| Navigation scroll reset | ✅ | Each section opens at the top (bug found in the real app). |
+
+### Verification performed for M4
+- `cargo test` — **71 passing** (59 unit incl. real termination of a spawned child, refusal on stale start time, self/PID 0 refusal, GPU parser/aggregation, panic containment; 4 real-hardware collector; 8 IPC incl. process stream on/off and `terminate_process` validation). clippy 0 warnings, fmt clean.
+- `npm test` — **101 passing** (table filter/sort/virtual window maths; Processes page: stream toggle, search, sort, details, confirm/cancel/Escape, OS refusal shown, self protected, exited process; CPU/Memory/GPU/Storage/Network pages; scroll reset). Typecheck clean.
+- **GPU cross-check vs Windows counters (WMI, same moment)** on the dev machine (AMD Radeon Vega 8): dedicated memory in use identical (1,122,631,680 B); utilisation 8.2 % vs busiest engine type 7 %. `sysinfo`'s provider had reported 92 % and 0 B on the same machine, which is why it is not used on Windows.
+- **Real app** (`tauri dev`): Overview (with live GPU card), CPU, Memory and Network pages captured and checked. **GPU and Processes pages were not captured in the real app** — the window was minimised during the session and was left alone; they are covered by component tests and backend tests only.
+- **Tick cost (release build, dev machine at ~100 % CPU from other work, median of 10)**: CPU usage 0.35 ms, frequency 0.01 ms, memory 0.17 ms, disks 6.4 ms, **networks 27 ms**, GPU 1.0 ms (`cargo run --release --example tick_breakdown`). Process list: 40–93 ms for ~320 processes (only while the Processes page is open).
+
 ## Feature status
 
 | Area | Status | Milestone |
 |---|---|---|
 | Overview dashboard | ✅ | 3 |
 | CPU / Memory / Storage / Network collectors | ✅ | 2 |
-| CPU / Memory / Storage / Network pages | ⬜ | 4 |
+| CPU / Memory / Storage / Network pages | ✅ | 4 |
 | Real-time event pipeline (sampler thread + events) | ✅ | 3 |
-| GPU monitoring | ⬜ | 4 |
-| Process manager | ⬜ | 4 |
+| GPU monitoring | 🟡 Windows ✅ (utilisation, VRAM); temperature unsupported; Linux/macOS unverified | 4 |
+| Process manager | ✅ | 4 |
 | History (SQLite) | ⬜ | 5 |
 | Settings: theme | ✅ (localStorage, interim) | 1 → 6 |
 | Settings: refresh, graphs, retention, startup, visibility | ⬜ Shown as "Not implemented" in UI | 6 |
@@ -76,6 +99,10 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | Docs: INSTALLATION, DEVELOPMENT, CONTRIBUTING, LICENSE | ⬜ | 7 (README, ARCHITECTURE, CLAUDE.md exist) |
 
 ## Known issues / limitations
+- **Network refresh is the most expensive part of a tick (~27 ms, release).** `sysinfo` calls `GetIfTable2` every tick, which enumerates all (incl. hidden filter) interfaces. Planned M6 fix: query known interfaces with `GetIfEntry2`.
+- Process list collection costs 40–93 ms per tick for ~320 processes; it only runs while the Processes page is open.
+- GPU temperature is never available (no vendor-specific provider); NVML is not implemented because it cannot be verified without NVIDIA hardware.
+- In the real-app session, two of four automated Ctrl+digit presses (sent with Windows SendKeys right after restoring the window) landed on a different section than expected. Cause not determined (likely focus timing in the test harness); the shortcut logic itself is covered by tests. Re-check manually.
 - `freezePrototype` is disabled because Recharts' `decimal.js-light` cannot run with a frozen `Object.prototype` (see ARCHITECTURE.md).
 - The sampler keeps running while the window is minimised/hidden; pausing or slowing it is planned for M6.
 - The renderer CPU cost of re-rendering six charts per second has not been optimised or measured in a release build yet (M6).

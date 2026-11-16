@@ -7,7 +7,7 @@
 use serde::Serialize;
 use tauri::State;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::events::{MonitorState, SnapshotEvent};
 use crate::system::SystemInfo;
 
@@ -45,6 +45,28 @@ pub fn app_info() -> AppResult<AppInfo> {
 #[tauri::command]
 pub fn system_info(state: State<'_, MonitorState>) -> AppResult<SystemInfo> {
     state.system_info()
+}
+
+/// Turns the process list in snapshot events on or off. The Processes page
+/// enables it while open; collecting it costs noticeably more than the rest.
+#[tauri::command]
+pub fn set_process_monitoring(state: State<'_, MonitorState>, enabled: bool) -> AppResult<()> {
+    state.system_info()?;
+    state.set_process_monitoring(enabled);
+    Ok(())
+}
+
+/// Ends a process after the user confirmed it in the UI. `start_time_secs`
+/// must match the process shown in the confirmation, which guards against a
+/// PID having been reused in between.
+#[tauri::command]
+pub fn terminate_process(pid: u32, start_time_secs: u64) -> AppResult<()> {
+    if pid == 0 {
+        return Err(AppError::InvalidArgument(
+            "PID must be greater than 0".into(),
+        ));
+    }
+    crate::processes::terminate::terminate(pid, start_time_secs)
 }
 
 /// Most recent sample, so a page can render before the next event arrives.

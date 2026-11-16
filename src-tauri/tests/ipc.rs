@@ -124,3 +124,89 @@ fn sampler_emits_snapshot_events_and_exposes_latest() {
     let latest: Value = res.deserialize().unwrap();
     assert!(latest["sequence"].as_u64().unwrap() >= 1);
 }
+
+fn request_with(cmd: &str, body: Value) -> InvokeRequest {
+    InvokeRequest {
+        body: InvokeBody::Json(body),
+        ..request(cmd)
+    }
+}
+
+#[test]
+fn process_list_is_only_streamed_while_enabled() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    use tauri::Listener;
+
+    let (app, webview) = app();
+    let (tx, rx) = mpsc::channel::<Value>();
+    app.listen_any(enginemonitor_lib::events::SNAPSHOT_EVENT, move |event| {
+        let _ = tx.send(serde_json::from_str(event.payload()).unwrap());
+    });
+
+    let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(first["processes"].is_null(), "off by default");
+
+    get_ipc_response(
+        &webview,
+        request_with(
+            "set_process_monitoring",
+            serde_json::json!({ "enabled": true }),
+        ),
+    )
+    .expect("enable");
+    let with = loop {
+        let e = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        if !e["processes"].is_null() {
+            break e;
+        }
+    };
+    let own_pid = with["processes"]["ownPid"].as_u64().unwrap();
+    assert!(with["processes"]["processes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["pid"].as_u64() == Some(own_pid)));
+
+    get_ipc_response(
+        &webview,
+        request_with(
+            "set_process_monitoring",
+            serde_json::json!({ "enabled": false }),
+        ),
+    )
+    .expect("disable");
+    // At most one in-flight tick may still carry processes.
+    let mut saw_off = false;
+    for _ in 0..3 {
+        if rx.recv_timeout(Duration::from_secs(5)).unwrap()["processes"].is_null() {
+            saw_off = true;
+            break;
+        }
+    }
+    assert!(saw_off);
+}
+
+#[test]
+fn terminate_process_validates_input_and_refuses_self() {
+    let (_app, webview) = app();
+    // Wrong argument type is rejected by deserialisation.
+    assert!(get_ipc_response(
+        &webview,
+        request_with(
+            "terminate_process",
+            serde_json::json!({ "pid": "1", "startTimeSecs": 0 })
+        )
+    )
+    .is_err());
+    // Self-termination is refused with a typed error.
+    let err = get_ipc_response(
+        &webview,
+        request_with(
+            "terminate_process",
+            serde_json::json!({ "pid": std::process::id(), "startTimeSecs": 0 }),
+        ),
+    )
+    .expect_err("must refuse self");
+    assert_eq!(err["kind"], "invalid_argument");
+}

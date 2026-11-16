@@ -25,5 +25,7 @@ export function readingAvailability<T>(reading: Reading<T>): Availability {
       return { state: "unsupported", reason: reading.reason };
     case "error":
       return { state: "error", message: reading.message };
+    case "pending":
+      return { state: "loading" };
   }
 }

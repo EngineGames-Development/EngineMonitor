@@ -2,6 +2,7 @@
 export type AppErrorKind =
   | "invalid_argument"
   | "unsupported"
+  | "not_found"
   | "permission_denied"
   | "internal"
   /** Frontend-only: the Tauri runtime is not present (e.g. opened in a plain browser). */
@@ -15,6 +16,7 @@ export interface AppError {
 const KNOWN_KINDS: ReadonlySet<string> = new Set<AppErrorKind>([
   "invalid_argument",
   "unsupported",
+  "not_found",
   "permission_denied",
   "internal",
   "no_backend",

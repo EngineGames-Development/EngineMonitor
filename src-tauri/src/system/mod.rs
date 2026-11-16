@@ -14,8 +14,11 @@ use sysinfo::{
 
 use crate::cpu::{self, CpuCollector, CpuInfo, CpuSample};
 use crate::error::{AppError, AppResult};
+use crate::gpu::{GpuMonitor, GpuSample};
 use crate::memory::{self, MemorySample};
 use crate::network::{NetworkCollector, NetworkSample};
+use crate::processes::{ProcessCollector, ProcessList};
+use crate::reading::Reading;
 use crate::storage::{StorageCollector, VolumeSample};
 
 /// Facts that do not change while the app runs.
@@ -46,6 +49,8 @@ pub struct Snapshot {
     pub memory: MemorySample,
     pub storage: Vec<VolumeSample>,
     pub network: NetworkSample,
+    /// Per-adapter GPU data, or why it is unavailable.
+    pub gpu: Reading<Vec<GpuSample>>,
 }
 
 fn to_app_error(e: sysinfo::Error, what: &str) -> AppError {
@@ -85,6 +90,7 @@ pub struct SystemCollector {
     cpu: CpuCollector,
     storage: StorageCollector,
     network: NetworkCollector,
+    processes: ProcessCollector,
 }
 
 impl SystemCollector {
@@ -109,6 +115,7 @@ impl SystemCollector {
             cpu: CpuCollector::new(),
             storage: StorageCollector::new(),
             network: NetworkCollector::new(),
+            processes: ProcessCollector::new(),
         })
     }
 
@@ -127,7 +134,11 @@ impl SystemCollector {
     /// Refreshes every source and returns one snapshot. The first snapshot
     /// after construction has no CPU usage and no transfer rates (no previous
     /// values to compare against).
-    pub fn sample(&mut self) -> Snapshot {
+    ///
+    /// The GPU monitor is passed in rather than owned because GPU providers
+    /// may hold thread-affine OS handles (not `Send`), while the collector
+    /// itself is moved into the sampler thread.
+    pub fn sample(&mut self, gpu: &mut GpuMonitor) -> Snapshot {
         self.sys.refresh_cpu_specifics(cpu_refresh());
         self.sys.refresh_memory_specifics(memory_refresh());
         // `true`: drop volumes/interfaces that disappeared; new ones are added.
@@ -145,6 +156,19 @@ impl SystemCollector {
             memory: memory::sample(&self.sys),
             storage: self.storage.sample(&self.disks, now),
             network: self.network.sample(&self.networks, now),
+            gpu: gpu.sample(),
         }
+    }
+
+    /// Refreshes and returns all processes. Call after `sample()` in the
+    /// same tick so per-process CPU shares use the same time base.
+    pub fn sample_processes(&mut self) -> ProcessList {
+        self.processes.sample(&mut self.sys, Instant::now())
+    }
+
+    /// Call when process collection is switched off, so the first tick after
+    /// switching it back on does not report CPU averaged over the pause.
+    pub fn reset_processes(&mut self) {
+        self.processes.reset();
     }
 }

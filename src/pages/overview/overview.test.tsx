@@ -105,7 +105,7 @@ describe("Overview (live data)", () => {
     expect(within(cpu).queryByText("0")).not.toBeInTheDocument();
   });
 
-  it("marks volumes without I/O counters as unsupported and GPU as not implemented", async () => {
+  it("marks volumes without I/O counters as unsupported and shows live GPU data", async () => {
     renderOverview();
     await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("latest_snapshot", undefined));
     emit(
@@ -116,7 +116,9 @@ describe("Overview (live data)", () => {
     expect(screen.getByText("Drive (G:\\)")).toBeInTheDocument();
     expect(screen.getByText("Unsupported")).toBeInTheDocument();
     expect(screen.getByText("No volume reports I/O counters")).toBeInTheDocument();
-    expect(screen.getByText("Not implemented")).toBeInTheDocument();
+    expect(screen.getByText("Test GPU")).toBeInTheDocument();
+    expect(screen.getByText("1.00 GiB of 2.00 GiB dedicated")).toBeInTheDocument();
+    expect(screen.queryByText("Not implemented")).not.toBeInTheDocument();
   });
 
   it("shows the backend error when collectors failed to start", async () => {

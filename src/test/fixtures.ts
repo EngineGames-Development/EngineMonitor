@@ -1,7 +1,7 @@
 /**
  * Test-only builders for backend payloads. Never imported by app code.
  */
-import type { Snapshot, SnapshotEvent, SystemInfo, VolumeSample } from "../ipc/types";
+import type { GpuSample, ProcessSample, Snapshot, SnapshotEvent, SystemInfo, VolumeSample } from "../ipc/types";
 
 const GIB = 1024 ** 3;
 
@@ -61,6 +61,40 @@ export function makeSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
       transmitBytesPerSec: 12_500,
       interfaces: [],
     },
+    gpu: { status: "ok", value: [makeGpu()] },
+    ...overrides,
+  };
+}
+
+export function makeGpu(overrides: Partial<GpuSample> = {}): GpuSample {
+  return {
+    id: "luid:0000000000017a3a",
+    model: "Test GPU",
+    vendor: "AMD",
+    provider: "windows-pdh",
+    usagePercent: { status: "ok", value: 12 },
+    memoryTotalBytes: { status: "ok", value: 2 * GIB },
+    memoryUsedBytes: { status: "ok", value: GIB },
+    memoryUsagePercent: 50,
+    temperatureCelsius: { status: "unsupported", reason: "no temperature" },
+    ...overrides,
+  };
+}
+
+export function makeProcess(overrides: Partial<ProcessSample> = {}): ProcessSample {
+  return {
+    pid: 1234,
+    parentPid: 1,
+    name: "editor.exe",
+    exe: String.raw`C:\Program Files\Editor\editor.exe`,
+    status: "running",
+    cpuPercent: 3.5,
+    memoryBytes: 200 * 1024 ** 2,
+    virtualMemoryBytes: 400 * 1024 ** 2,
+    diskReadBytesPerSec: 0,
+    diskWriteBytesPerSec: 1024,
+    startTimeSecs: 1_799_990_000,
+    runTimeSecs: 600,
     ...overrides,
   };
 }
@@ -69,6 +103,7 @@ export function makeEvent(sequence: number, snapshot: Partial<Snapshot> = {}): S
   return {
     sequence,
     intervalMs: 1000,
+    processes: null,
     snapshot: makeSnapshot({ timestampMs: 1_800_000_000_000 + sequence * 1000, ...snapshot }),
   };
 }

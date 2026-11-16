@@ -37,6 +37,19 @@ export function getSystemInfo(): Promise<CommandResult<SystemInfo>> {
   return call<SystemInfo>("system_info");
 }
 
+/** Includes the process list in snapshot events while enabled (Processes page). */
+export function setProcessMonitoring(enabled: boolean): Promise<CommandResult<null>> {
+  return call<null>("set_process_monitoring", { enabled });
+}
+
+/**
+ * Ends a process. `startTimeSecs` must be the start time shown in the
+ * confirmation; the backend refuses if the PID now belongs to another process.
+ */
+export function terminateProcess(pid: number, startTimeSecs: number): Promise<CommandResult<null>> {
+  return call<null>("terminate_process", { pid, startTimeSecs });
+}
+
 /** Latest sample, or null before the first tick. One-shot: live data arrives as events. */
 export function getLatestSnapshot(): Promise<CommandResult<SnapshotEvent | null>> {
   return call<SnapshotEvent | null>("latest_snapshot");

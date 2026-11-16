@@ -1,6 +1,7 @@
 import { AvailabilityBadge, Badge, Card, EmptyState, Meter } from "../../design";
 import type { VolumeSample } from "../../ipc/types";
 import { formatByteRate, formatBytes, formatPercent, UNAVAILABLE } from "../../lib/format";
+import { readingAvailability } from "../../metrics/availability";
 
 const KIND_LABEL = { ssd: "SSD", hdd: "HDD", unknown: null } as const;
 
@@ -12,13 +13,7 @@ function IoLine({ volume }: { volume: VolumeSample }) {
   if (volume.io.status !== "ok") {
     return (
       <span className="flex items-center gap-1.5 text-xs text-fg-subtle">
-        <AvailabilityBadge
-          availability={
-            volume.io.status === "unsupported"
-              ? { state: "unsupported", reason: volume.io.reason }
-              : { state: "error", message: volume.io.message }
-          }
-        />
+        <AvailabilityBadge availability={readingAvailability(volume.io)} />
         I/O activity
       </span>
     );

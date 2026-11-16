@@ -3,6 +3,7 @@ export { Badge } from "./Badge";
 export { Button } from "./Button";
 export { Card } from "./Card";
 export { cx } from "./cx";
+export { Dialog } from "./Dialog";
 export { Icon, iconNames, type IconName } from "./Icon";
 export { Meter, clampPercent } from "./Meter";
 export { Metric } from "./Metric";

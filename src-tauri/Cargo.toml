@@ -20,13 +20,33 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network"] }
+sysinfo = { version = "0.40.3", default-features = false, features = ["system", "disk", "network"] }
+
+# Windows: own implementations where sysinfo is insufficient.
+# - Process termination needs precise error codes (access denied vs. not
+#   found); sysinfo shells out to taskkill and discards them.
+# - GPU: sysinfo sums all engine counters (e.g. 3D + video = 92 % where Task
+#   Manager shows 49 %) and read 0 bytes of dedicated memory on the dev
+#   machine, so a DXGI + PDH provider is used instead.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Performance",
+    "Win32_Graphics_Dxgi",
+] }
+
+# Elsewhere sysinfo's GPU support is the provider (not verified on hardware).
+[target.'cfg(not(windows))'.dependencies]
+sysinfo = { version = "0.40.3", default-features = false, features = ["gpu"] }
 
 [profile.release]
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# "unwind" (not "abort") so a panic in an optional collector such as a GPU
+# provider can be contained with catch_unwind instead of killing the app.
+panic = "unwind"
 strip = true
 
 [dev-dependencies]

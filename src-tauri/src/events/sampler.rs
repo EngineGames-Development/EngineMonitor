@@ -45,14 +45,26 @@ pub struct Sampler<T> {
 }
 
 impl<T: Clone + Send + 'static> Sampler<T> {
-    pub fn spawn<S, F>(
+    pub fn spawn<S, F>(name: &str, interval: Duration, source: S, sink: F) -> std::io::Result<Self>
+    where
+        S: FnMut() -> T + Send + 'static,
+        F: Fn(&T) + Send + 'static,
+    {
+        Self::spawn_with(name, interval, move || source, sink)
+    }
+
+    /// Like [`Sampler::spawn`], but the source is built *on the sampler
+    /// thread* by `make_source`. Use this for sources holding OS handles that
+    /// must not cross threads (they need not be `Send`).
+    pub fn spawn_with<M, S, F>(
         name: &str,
         interval: Duration,
-        mut source: S,
+        make_source: M,
         sink: F,
     ) -> std::io::Result<Self>
     where
-        S: FnMut() -> T + Send + 'static,
+        M: FnOnce() -> S + Send + 'static,
+        S: FnMut() -> T + 'static,
         F: Fn(&T) + Send + 'static,
     {
         let shared = Arc::new(Shared {
@@ -66,27 +78,30 @@ impl<T: Clone + Send + 'static> Sampler<T> {
         let worker = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
             .name(name.to_owned())
-            .spawn(move || loop {
-                let started = Instant::now();
-                let value = source();
-                sink(&value);
-
-                let mut st = worker.lock();
-                st.latest = Some(value);
+            .spawn(move || {
+                let mut source = make_source();
                 loop {
-                    if st.stop {
-                        return;
+                    let started = Instant::now();
+                    let value = source();
+                    sink(&value);
+
+                    let mut st = worker.lock();
+                    st.latest = Some(value);
+                    loop {
+                        if st.stop {
+                            return;
+                        }
+                        let deadline = started + st.interval;
+                        let now = Instant::now();
+                        if now >= deadline {
+                            break;
+                        }
+                        st = worker
+                            .wake
+                            .wait_timeout(st, deadline - now)
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .0;
                     }
-                    let deadline = started + st.interval;
-                    let now = Instant::now();
-                    if now >= deadline {
-                        break;
-                    }
-                    st = worker
-                        .wake
-                        .wait_timeout(st, deadline - now)
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .0;
                 }
             })?;
         Ok(Self {

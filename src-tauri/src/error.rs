@@ -13,6 +13,9 @@ pub enum AppError {
     /// The requested metric or operation is not available on this system.
     #[error("unsupported: {0}")]
     Unsupported(String),
+    /// The referenced item (e.g. a process) does not exist (any more).
+    #[error("not found: {0}")]
+    NotFound(String),
     /// The OS denied the operation (e.g. protected process).
     #[error("permission denied: {0}")]
     PermissionDenied(String),
@@ -26,6 +29,7 @@ impl AppError {
         match self {
             AppError::InvalidArgument(_) => "invalid_argument",
             AppError::Unsupported(_) => "unsupported",
+            AppError::NotFound(_) => "not_found",
             AppError::PermissionDenied(_) => "permission_denied",
             AppError::Internal(_) => "internal",
         }
@@ -63,6 +67,7 @@ mod tests {
         let kinds = [
             AppError::InvalidArgument(String::new()).kind(),
             AppError::Unsupported(String::new()).kind(),
+            AppError::NotFound(String::new()).kind(),
             AppError::PermissionDenied(String::new()).kind(),
             AppError::Internal(String::new()).kind(),
         ];

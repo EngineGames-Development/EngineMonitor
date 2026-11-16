@@ -20,8 +20,8 @@ with the code; sections that describe work not yet implemented are marked
 │  ├─ system_info / latest_snapshot (M3, implemented)│                     │
 │  ├─ get_settings / update_settings (planned)       │                     │
 │  ├─ query_history          (planned)               │                     │
-│  ├─ set_process_stream     (planned)               │                     │
-│  └─ terminate_process      (planned, guarded)      │                     │
+│  ├─ set_process_monitoring (M4, implemented)       │                     │
+│  └─ terminate_process      (M4, guarded)           │                     │
 └────────────────────────────────────────────────────┼─────────────────────┘
                                                      │ Tauri IPC / events
 ┌──────────────────────── WebView (React + TS) ──────┼─────────────────────┐
@@ -40,8 +40,10 @@ with the code; sections that describe work not yet implemented are marked
 | **Push, not poll.** One Rust sampler thread emits snapshots as Tauri events. | The frontend never runs timers to fetch metrics, so there is one refresh cadence and one `sysinfo` instance. Listener cleanup is centralised in one hook. |
 | **Single owner of `sysinfo` state.** | `sysinfo` computes CPU usage and network deltas from consecutive refreshes. A single long-lived owner keeps those deltas correct and avoids re-allocating process tables. |
 | **Rates computed by us, not trusted blindly.** | Network/disk speeds are derived from cumulative counters ÷ measured elapsed time (`Instant`). A counter that goes *down* (interface reset, driver reload) is treated as a reset and yields no rate for that tick instead of a negative/huge spike. |
-| **Process list is opt-in.** | Collecting full process details is the most expensive part of sampling. It is only included while the Processes page (or Overview top-list) is mounted. |
-| **GPU behind a trait.** | `GpuProvider` implementations are tried in order (NVML for NVIDIA, Windows PDH/DXGI for any vendor on Windows). Every failure resolves to an explicit `Unsupported { reason }` value; GPU errors can never stop the sampler. |
+| **Process list is opt-in.** | Collecting all processes costs ~40–90 ms per tick (≈320 processes, release build, dev machine). `set_process_monitoring` turns it on only while the Processes page is mounted; the list then rides in the same `SnapshotEvent` (`processes` field). Switching it back on resets per-process state so the first tick does not report CPU averaged over the pause. |
+| **Guarded termination.** | `terminate_process(pid, startTimeSecs)` refuses PID 0, EngineMonitor itself and session-critical processes (`csrss`, `wininit`, `lsass`, … / PID 1 on Unix). On Windows it opens the process first; while that handle is held the PID cannot be reused, so the start-time check against what the user confirmed is race-free. `OpenProcess`/`TerminateProcess` are called directly (not `sysinfo`'s `taskkill` wrapper) to report "access denied" vs "not found" precisely. The UI requires an explicit confirmation dialog. |
+| **GPU behind a trait, isolated.** | One `GpuProvider` per platform: Windows uses an own DXGI + PDH provider (`gpu/windows_provider.rs`); elsewhere `sysinfo`'s GPU support. `GpuMonitor` wraps provider init and sampling in `catch_unwind`; a failing or panicking provider becomes a `Reading::Error` for the GPU section only (the release profile uses `panic = "unwind"` for this). Providers may hold thread-affine OS handles, so the sampler builds them *on its own thread* (`Sampler::spawn_with`) instead of requiring `Send`. |
+| **Own Windows GPU provider instead of `sysinfo`'s.** | On the dev machine `sysinfo` reported 92 % GPU (it sums all engines: 3D 49 % + video 43 %) and 0 bytes of dedicated memory (wrong adapter). The own provider follows Task Manager (busiest engine type per adapter, matched by LUID) and matched Windows' counters byte-for-byte for memory. |
 | **SQLite via `rusqlite` (bundled).** | No system SQLite dependency, deterministic builds, synchronous API that fits a dedicated writer thread (no async runtime required). |
 | **History is downsampled.** | Live data is held in memory (ring buffers). Only every *n*-th sample (configurable, default 5 s) is written to disk, in batched transactions, with a retention window enforced by periodic `DELETE`s. |
 | **No routing / icon / font dependencies.** | Navigation is a small typed state machine; icons are a hand-drawn SVG set; fonts use the OS UI stack. Fewer dependencies, no network fetches, smaller bundle. |
@@ -79,7 +81,8 @@ EngineMonitor/
       ├─ reading.rs           Reading<T>: ok / unsupported / error
       ├─ system/              OS facts + SystemCollector (owns all sysinfo state)
       ├─ cpu/ memory/ storage/ network/   per-domain collectors (M2, done)
-      ├─ gpu/ processes/                  (planned, M4)
+      ├─ gpu/                 GpuProvider trait, GpuMonitor, windows_provider (DXGI+PDH), sysinfo_provider (non-Windows)
+      ├─ processes/           ProcessCollector, terminate (guarded)
       ├─ events/              sampler thread (generic, Condvar-timed) + MonitorState (M3)
       ├─ history/ settings/               (planned, M5–M6)
    ├─ tests/                  ipc.rs (IPC + ACL), collectors.rs (real hardware)
@@ -96,8 +99,8 @@ EngineMonitor/
 | `thiserror` | typed errors |
 | `sysinfo` 0.40 (features `system`, `disk`, `network`; default features off) | CPU, memory, disks, networks; processes from M4 |
 | `rusqlite` + `bundled` (planned, M5) | history + settings persistence |
-| `nvml-wrapper` (planned, M4) | NVIDIA GPU metrics; loads `nvml.dll`/`libnvidia-ml.so` at runtime, so non-NVIDIA systems are unaffected |
-| `windows` crate (planned, M4, Windows only) | PDH GPU-engine counters + DXGI adapter memory |
+| `nvml-wrapper` (not added) | NVIDIA temperature would need it; not implemented because it cannot be verified without NVIDIA hardware |
+| `windows` 0.62 (Windows only; same version `sysinfo` already uses) | DXGI adapters, PDH GPU counters, `OpenProcess`/`TerminateProcess` |
 | `tauri-plugin-autostart` (planned, M6) | "launch at login" setting |
 
 ### Frontend
@@ -107,7 +110,7 @@ EngineMonitor/
 | `@tauri-apps/api` 2 | `invoke` / `listen` |
 | `tailwindcss` 4 + `@tailwindcss/vite` | styling, tokens via `@theme` |
 | `recharts` 3 | charts (adds ~110 KB gzip to the bundle; acceptable for a local app, revisit in M6) |
-| `@tanstack/react-virtual` (planned, M4) | virtualised process table |
+| ~~`@tanstack/react-virtual`~~ | not used: the process table uses a 40-line in-repo hook (`useVirtualRows`) |
 | `vite`, `typescript`, `vitest`, `@testing-library/*`, `jsdom` | dev / test only |
 
 ## 4. Milestones
@@ -122,7 +125,7 @@ EngineMonitor/
 
 ## 5. Known technical limitations
 
-- **GPU metrics are vendor- and OS-specific.** `sysinfo` 0.40 has an optional `gpu` feature whose coverage will be evaluated in M4. NVIDIA via NVML is reliable on Windows/Linux. On Windows, AMD/Intel utilisation can come from PDH "GPU Engine" counters and VRAM from DXGI, but temperature is generally *not* exposed without vendor SDKs. macOS exposes very little without private APIs. Unsupported values are shown as unsupported.
+- **GPU metrics are vendor- and OS-specific.** Windows: utilisation and dedicated VRAM for any vendor via DXGI + PDH (verified on an AMD Vega 8 iGPU). Temperature is not available through these APIs and is shown as unsupported; NVML (NVIDIA) is not implemented. Linux/macOS use `sysinfo`'s GPU support, which is unverified on real hardware. Shared (system) GPU memory is not shown.
 - **CPU temperature** is usually unavailable on Windows without administrator rights or a kernel driver; it will not be faked.
 - **CPU load average** exists on Linux/macOS only; Windows has no equivalent and it is shown as unavailable there.
 - **Per-process executable paths** of protected/system processes are hidden by the OS for non-elevated users; they will display as "access denied", not guessed.

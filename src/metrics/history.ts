@@ -1,4 +1,4 @@
-import type { Snapshot, SnapshotEvent } from "../ipc/types";
+import { readingValue, type Snapshot, type SnapshotEvent } from "../ipc/types";
 
 /**
  * One point of the in-memory live history used by real-time graphs.
@@ -16,6 +16,10 @@ export interface HistoryPoint {
   /** Disk read / write across volumes that report I/O, bytes per second. */
   diskRead: number | null;
   diskWrite: number | null;
+  /** Busiest GPU adapter's utilisation. */
+  gpu: number | null;
+  /** Per-core utilisation, index = logical core. */
+  cores: (number | null)[];
 }
 
 /** Default live-history length: 5 minutes at the default 1 s interval. */
@@ -30,6 +34,17 @@ export function sumKnown(values: Iterable<number | null>): number | null {
   return total;
 }
 
+/** Highest utilisation among adapters that report one, or null. */
+export function busiestGpu(s: Snapshot): number | null {
+  if (s.gpu.status !== "ok") return null;
+  let max: number | null = null;
+  for (const g of s.gpu.value) {
+    const u = readingValue(g.usagePercent);
+    if (u !== null && (max === null || u > max)) max = u;
+  }
+  return max;
+}
+
 export function toHistoryPoint(s: Snapshot): HistoryPoint {
   const io = s.storage.flatMap((v) => (v.io.status === "ok" ? [v.io.value] : []));
   return {
@@ -40,11 +55,13 @@ export function toHistoryPoint(s: Snapshot): HistoryPoint {
     tx: s.network.transmitBytesPerSec,
     diskRead: sumKnown(io.map((d) => d.readBytesPerSec)),
     diskWrite: sumKnown(io.map((d) => d.writeBytesPerSec)),
+    gpu: busiestGpu(s),
+    cores: s.cpu.cores.map((c) => c.usagePercent),
   };
 }
 
 export function gapPoint(t: number): HistoryPoint {
-  return { t, cpu: null, memory: null, rx: null, tx: null, diskRead: null, diskWrite: null };
+  return { t, cpu: null, memory: null, rx: null, tx: null, diskRead: null, diskWrite: null, gpu: null, cores: [] };
 }
 
 /**

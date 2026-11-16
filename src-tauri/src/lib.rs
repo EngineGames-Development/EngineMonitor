@@ -7,8 +7,10 @@ pub mod commands;
 pub mod cpu;
 pub mod error;
 pub mod events;
+pub mod gpu;
 pub mod memory;
 pub mod network;
+pub mod processes;
 pub mod rate;
 pub mod reading;
 pub mod storage;
@@ -25,6 +27,8 @@ pub fn configure<R: Runtime>(builder: Builder<R>) -> Builder<R> {
         commands::app_info,
         commands::system_info,
         commands::latest_snapshot,
+        commands::set_process_monitoring,
+        commands::terminate_process,
     ])
 }
 

@@ -16,6 +16,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::error::{AppError, AppResult};
+use crate::gpu::GpuMonitor;
+use crate::processes::ProcessList;
 use crate::system::{Snapshot, SystemCollector, SystemInfo};
 use sampler::{Sampler, DEFAULT_INTERVAL};
 
@@ -30,12 +32,15 @@ pub struct SnapshotEvent {
     /// The sampling interval in effect, so the UI can detect stale data.
     pub interval_ms: u64,
     pub snapshot: Snapshot,
+    /// Present only while process monitoring is enabled.
+    pub processes: Option<ProcessList>,
 }
 
 /// Managed Tauri state for monitoring.
 pub struct MonitorState {
     info: Result<SystemInfo, AppError>,
     sampler: Option<Sampler<SnapshotEvent>>,
+    process_stream: Arc<AtomicBool>,
 }
 
 impl MonitorState {
@@ -50,6 +55,7 @@ impl MonitorState {
                 return Self {
                     info: Err(e),
                     sampler: None,
+                    process_stream: Arc::new(AtomicBool::new(false)),
                 };
             }
         };
@@ -58,10 +64,27 @@ impl MonitorState {
         let interval_ms = Arc::new(AtomicU64::new(DEFAULT_INTERVAL.as_millis() as u64));
         let sequence = AtomicU64::new(0);
         let source_interval = Arc::clone(&interval_ms);
-        let source = move || SnapshotEvent {
-            sequence: sequence.fetch_add(1, Ordering::Relaxed),
-            interval_ms: source_interval.load(Ordering::Relaxed),
-            snapshot: collector.sample(),
+        let process_stream = Arc::new(AtomicBool::new(false));
+        let source_processes = Arc::clone(&process_stream);
+        // Built on the sampler thread: GPU providers may hold OS handles that
+        // must not cross threads.
+        let make_source = move || {
+            let mut gpu = GpuMonitor::new();
+            let mut processes_were_on = false;
+            move || {
+                let snapshot = collector.sample(&mut gpu);
+                let processes_on = source_processes.load(Ordering::Relaxed);
+                if processes_on && !processes_were_on {
+                    collector.reset_processes();
+                }
+                processes_were_on = processes_on;
+                SnapshotEvent {
+                    sequence: sequence.fetch_add(1, Ordering::Relaxed),
+                    interval_ms: source_interval.load(Ordering::Relaxed),
+                    processes: processes_on.then(|| collector.sample_processes()),
+                    snapshot,
+                }
+            }
         };
 
         let handle = app.clone();
@@ -77,21 +100,23 @@ impl MonitorState {
             }
         };
 
-        match Sampler::spawn(
+        match Sampler::spawn_with(
             "enginemonitor-sampler",
             Duration::from_millis(interval_ms.load(Ordering::Relaxed)),
-            source,
+            make_source,
             sink,
         ) {
             Ok(sampler) => Self {
                 info: Ok(info),
                 sampler: Some(sampler),
+                process_stream,
             },
             Err(e) => Self {
                 info: Err(AppError::Internal(format!(
                     "failed to start the sampler thread: {e}"
                 ))),
                 sampler: None,
+                process_stream,
             },
         }
     }
@@ -106,6 +131,11 @@ impl MonitorState {
             (Ok(_), Some(s)) => Ok(s.latest()),
             (Ok(_), None) => Err(AppError::Internal("sampler is not running".into())),
         }
+    }
+
+    /// Enables or disables the process list in snapshot events.
+    pub fn set_process_monitoring(&self, enabled: bool) {
+        self.process_stream.store(enabled, Ordering::Relaxed);
     }
 
     pub fn stop(&self) {

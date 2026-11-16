@@ -8,7 +8,14 @@
 export type Reading<T> =
   | { status: "ok"; value: T }
   | { status: "unsupported"; reason: string }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string }
+  /** Derived from two samples; not available yet. */
+  | { status: "pending" };
+
+/** The value of an ok reading, else null. */
+export function readingValue<T>(r: Reading<T>): T | null {
+  return r.status === "ok" ? r.value : null;
+}
 
 export interface CpuInfo {
   brand: string | null;
@@ -104,6 +111,19 @@ export interface NetworkSample {
   interfaces: InterfaceSample[];
 }
 
+/** `gpu::GpuSample`. Dedicated VRAM only. */
+export interface GpuSample {
+  id: string;
+  model: string | null;
+  vendor: string | null;
+  provider: string;
+  usagePercent: Reading<number>;
+  memoryTotalBytes: Reading<number>;
+  memoryUsedBytes: Reading<number>;
+  memoryUsagePercent: number | null;
+  temperatureCelsius: Reading<number>;
+}
+
 export interface Snapshot {
   timestampMs: number;
   uptimeSecs: number | null;
@@ -111,6 +131,30 @@ export interface Snapshot {
   memory: MemorySample;
   storage: VolumeSample[];
   network: NetworkSample;
+  gpu: Reading<GpuSample[]>;
+}
+
+/** `processes::ProcessSample`. */
+export interface ProcessSample {
+  pid: number;
+  parentPid: number | null;
+  name: string;
+  /** null when the OS does not reveal it (protected / other user). */
+  exe: string | null;
+  status: string;
+  /** Share of total machine CPU, 0-100; null on a process's first tick. */
+  cpuPercent: number | null;
+  memoryBytes: number;
+  virtualMemoryBytes: number;
+  diskReadBytesPerSec: number | null;
+  diskWriteBytesPerSec: number | null;
+  startTimeSecs: number;
+  runTimeSecs: number;
+}
+
+export interface ProcessList {
+  processes: ProcessSample[];
+  ownPid: number;
 }
 
 /** `events::SnapshotEvent`, payload of the `metrics://snapshot` event. */
@@ -118,6 +162,8 @@ export interface SnapshotEvent {
   sequence: number;
   intervalMs: number;
   snapshot: Snapshot;
+  /** Present only while process monitoring is enabled. */
+  processes: ProcessList | null;
 }
 
 export const SNAPSHOT_EVENT = "metrics://snapshot";

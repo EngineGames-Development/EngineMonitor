@@ -49,7 +49,7 @@ export function OverviewPage() {
             <LiveCharts history={metrics.history} className="xl:col-span-2" />
             <div className="grid content-start gap-4">
               <SystemCard info={metrics.info} snapshot={metrics.latest.snapshot} />
-              <GpuCard />
+              <GpuCard gpu={metrics.latest.snapshot.gpu} />
             </div>
           </div>
           <StorageCard volumes={metrics.latest.snapshot.storage} />

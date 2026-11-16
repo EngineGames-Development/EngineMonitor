@@ -1,7 +1,13 @@
 // Every app command must be listed here. Tauri then generates an
 // `allow-<command>` permission for it, and the command is only callable from
 // windows whose capability grants that permission (see capabilities/).
-const COMMANDS: &[&str] = &["app_info", "system_info", "latest_snapshot"];
+const COMMANDS: &[&str] = &[
+    "app_info",
+    "system_info",
+    "latest_snapshot",
+    "set_process_monitoring",
+    "terminate_process",
+];
 
 fn main() {
     let mut attributes = tauri_build::Attributes::new()
