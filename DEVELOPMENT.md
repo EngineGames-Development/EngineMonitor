@@ -122,3 +122,15 @@ Tests don't replace a look at the real app. Useful techniques:
   formatters (`toLocale*String`) in code that runs per render.
 
 The current benchmark is in DEVELOPMENT_STATUS.md.
+
+## Making a release
+
+1. Update the version in `package.json`, `src-tauri/Cargo.toml` and
+   `src-tauri/tauri.conf.json`, and add a section to `CHANGELOG.md`.
+2. Make sure CI is green on `main`.
+3. Build on Windows: `npx tauri build`. The installers are in
+   `src-tauri/target/release/bundle/{nsis,msi}/`.
+4. Test the NSIS installer (install, run, uninstall).
+5. Create `SHA256SUMS.txt` for the installers, tag `vX.Y.Z` and publish a
+   GitHub release with the installers and the checksum file:
+   `gh release create vX.Y.Z <files> --title "EngineMonitor X.Y.Z" --notes-file <notes>`.

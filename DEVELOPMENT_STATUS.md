@@ -1,6 +1,6 @@
 # EngineMonitor — Development Status
 
-Last updated: 2026-11-17 · Current milestone: **6 (Settings & performance) — complete except the launch-at-login toggle check (uncommitted)** · Next: 7 (hardening, installers, docs)
+Last updated: 2026-11-17 · **All 7 milestones complete — version 0.1.0 released.** Public repository: <https://github.com/EngineGames-Development/EngineMonitor>
 
 Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
@@ -100,7 +100,7 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 - **Real app** (`tauri dev`, opened at `#history`): recorded 8 points in the first minute into `%APPDATA%\dev.enginemonitor.desktop\history.sqlite3`; the History page rendered CPU/memory/swap, network and disk charts and the settings card (screenshot checked).
 - **Database size measured**: 100.6 bytes/row, 11.6 MiB for 7 days at 5 s (estimate shown in the UI: 11.5 MiB).
 
-## Milestone 6 — Settings & performance ✅ (one item 🟡, see below)
+## Milestone 6 — Settings & performance ✅
 
 | Item | Status | Notes |
 |---|---|---|
@@ -109,7 +109,7 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | Frontend settings | ✅ | `SettingsProvider` (backend = source of truth, theme cached for first paint, malformed payloads rejected), new Settings page, theme from settings, network unit, live window, smooth charts, Overview visibility applied everywhere. Verified in the real app. |
 | Hidden-window throttle | ✅ | Minimise → `intervalMs` 5000 and no process list; restore → configured interval at once. Verified in the release app. |
 | Start minimised | ✅ | Verified in the real app (window iconic at start, sampler at 5 s, restore returns to 1 s). **Bug found and fixed:** a window minimised during start-up emits no resize event, so the throttle did not engage; start-up now syncs visibility explicitly. |
-| Launch at login | 🟡 | Implemented (per-user login item, no admin rights); the read path is tested and the switch is tested against a mocked backend. Enabling/disabling has **not** been exercised on this machine, because it changes the real Windows login items. |
+| Launch at login | ✅ | Per-user login item, no admin rights. Verified in M7 on Windows with a separate test entry name (`cargo test autostart -- --ignored`): enabled, read back, disabled, nothing left in `HKCU` or `HKLM` Run. EngineMonitor's own entry was not toggled. |
 | Faster Windows network counters | ✅ | Own `GetIfTable2` reader (`network/windows_table.rs`); IP addresses from `sysinfo` only on interface-set change or every 30 s. Network cost per tick: **20.0 ms → 3.2 ms** (release, `tick_breakdown`, median of 11). A hardware test checks it lists the same interfaces, MACs, addresses, MTUs and counters as a full `sysinfo` refresh. |
 | Frontend rendering cost | ✅ | Found by profiling the release app through the WebView2 DevTools protocol: an infinite `animate-ping` on "Live" badges, a 500 ms `width` transition on meters (layout on every frame) and a per-call `toLocaleTimeString` in chart axes. Removed, or replaced with cached `Intl.DateTimeFormat`. |
 | Release benchmark | ✅ | See below. |
@@ -125,7 +125,7 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
 - Whole app while visible: about 8 % of one core, i.e. about 2 % of this 4-core machine. The backend's share is under 1 % of one core.
 - Renderer (DevTools metrics, visible): task time 117 → 60 ms/s, layout 10.7 → 1.2 ms/s, layouts 48 → 12 per second.
-- Memory over 4.5 minutes (visible, minimised, restored): renderer private memory oscillates between 66 and 120 MB (garbage collection) without a trend; the GPU process rose from 112 to about 166 MB as its caches warmed, then stayed flat. No leak seen in that window; a multi-hour soak test is left for M7.
+- Memory over 4.5 minutes (visible, minimised, restored): renderer private memory oscillates between 66 and 120 MB (garbage collection) without a trend; the GPU process rose from 112 to about 166 MB as its caches warmed, then stayed flat. No leak seen in that window; see the 30-minute soak test in M7.
 - WebView2's own processes (browser, GPU, renderer) dominate the memory footprint. Working-set sums across processes overstate the total, because shared pages are counted in each process.
 - Method: `TotalProcessorTime` and `PrivateMemorySize64` deltas of `enginemonitor.exe` and its WebView2 child processes (PowerShell). The scripts are not part of the repository.
 
@@ -135,6 +135,37 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 - `npx tauri build --no-bundle` — release exe builds (7.3 MB).
 - Real app: hidden throttle, start minimised and the Settings page (renders without errors; a change made through the UI is saved by the backend) were checked through the WebView2 DevTools protocol on a local-only debug port enabled just for the check. Setting changes made for the check were reverted.
 - Debug builds now use `debug = "line-tables-only"` (deps without debug info): the previous full-debug `target/` had grown to ~19 GB on a nearly full C: drive (0.17 GB free), causing a build failure; `cargo clean` freed 19.1 GiB.
+
+## Milestone 7 — Hardening & release ✅
+
+| Item | Status | Notes |
+|---|---|---|
+| Installers | ✅ | NSIS `EngineMonitor_0.1.0_x64-setup.exe` (per-user, no admin) and MSI `EngineMonitor_0.1.0_x64_en-US.msi` (per-machine). NSIS: silent install, launch (live data), clean exit and silent uninstall verified; uninstall removes program, shortcuts and registry entry and keeps user data. MSI: properties checked (`ALLUSERS=1`, Start menu and desktop shortcuts), payload extracted with `msiexec /a` and run successfully. **A full elevated MSI install was not run** (needs a UAC prompt). Installers are not code-signed. |
+| Launch at login hardening | ✅ | `tauri-plugin-autostart` replaced with `auto-launch` fixed to the current user: the plugin's Windows default writes the machine-wide `HKLM` Run key when the app runs elevated. |
+| Keyboard shortcuts | ✅ | `Ctrl+1` … `Ctrl+9` checked in the release app with real key events through the WebView2 DevTools protocol: 10/10 presses landed on the right section (the earlier SendKeys mismatch was the test harness). |
+| Soak test | ✅ | 30 min, release build; see below. |
+| CI | ✅ | GitHub Actions on Windows, Ubuntu 24.04 and macOS: typecheck, frontend tests, production build, rustfmt, clippy, all Rust tests. All three green. CI found and fixed: a macOS link error in the IPC tests (`generate_context!` expanded three times), WARP listed as a GPU on GPU-less Windows VMs, and a hardware-test assumption about sysinfo MACs. |
+| Docs | ✅ | README (rewritten), INSTALLATION, DEVELOPMENT, CONTRIBUTING, SECURITY, CHANGELOG, LICENSE (MIT); issue and PR templates; Dependabot. |
+| Repository | ✅ | Public on GitHub; private vulnerability reporting enabled. Commit history uses the project address (EngineGames-Development@web.de). |
+
+### Soak test (release build, 30 min, Windows 11)
+About the first 5 minutes ran with the window visible; then the window was minimised (not by the test script) and the app correctly switched to 5 s updates for the rest. Samples every 2 minutes:
+
+| | Start | 5–30 min (range) |
+|---|---|---|
+| Backend private memory | 13.3 MB | 13.1–13.9 MB, flat |
+| Renderer private memory | 90 MB | 71–80 MB once minimised, flat |
+| GPU process private memory | 104 MB | 137–217 MB (rose while visible, flat, then fell to 137 MB) |
+| JS heap used | 8 MB | 9–14 MB, sawtooth (garbage collection), no trend |
+| DOM event listeners | — | 878–918, no trend |
+
+Backend CPU time over the run: 4.9 s in 28 min (≈ 0.3 % of one core, mostly minimised). At the end the script's `CloseMainWindow` did not close the minimised app; sending `WM_CLOSE` to the real window afterwards closed it within 0.1 s both visible and minimised, so this was the script (.NET picks a heuristic "main window"), not the app. No leak was seen. The run was shorter than "multi-hour" and mostly minimised; a long visible soak test is still worth doing.
+
+### Verification for M7
+- `cargo test` — **117 passing + 1 ignored** (97 unit incl. the WARP filter and autostart, 5 hardware, 15 IPC); the ignored autostart round trip was run manually and passed. clippy and rustfmt clean.
+- `npm test` — **123 passing**; typecheck clean; `npm run build` succeeds; `npm audit`: 0 vulnerabilities.
+- Release installers built with `npx tauri build`, tested as described above.
+- CI green on Windows, Ubuntu and macOS (run linked from the README badge).
 
 ## Feature status
 
@@ -151,9 +182,10 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | Settings: refresh, graphs, network unit, retention, visibility, start minimised | ✅ | 6 |
 | Settings: launch at login | 🟡 implemented; toggle not exercised on a real machine | 6 |
 | Settings: application info | ✅ | 1 |
-| Installers (MSI/NSIS/DMG/AppImage) | ⬜ Not yet verified | 7 |
-| Benchmarks | ✅ release CPU/memory, visible vs minimised (M6); long soak test ⬜ | 6 / 7 |
-| Docs: INSTALLATION, DEVELOPMENT, CONTRIBUTING, LICENSE | ⬜ | 7 (README, ARCHITECTURE, CLAUDE.md exist) |
+| Installers: Windows NSIS + MSI | ✅ (MSI elevated install not run; unsigned) | 7 |
+| Installers: DMG / AppImage / deb | ⬜ not built (no macOS/Linux machine to test them) | — |
+| Benchmarks | ✅ release CPU/memory, visible vs minimised (M6); 30-min soak (M7) | 6 / 7 |
+| Docs: README, INSTALLATION, DEVELOPMENT, ARCHITECTURE, CONTRIBUTING, SECURITY, CHANGELOG, LICENSE | ✅ | 7 |
 
 ## Known issues / limitations
 - **Disk space:** the development machine's C: drive is almost full independently of this project (~10 GB free after the M6 builds). Release builds need several GB in `src-tauri/target/`.
@@ -163,14 +195,14 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 - The WebView is not told that the window is minimised (`document.hidden` stays false on WebView2), so it still re-renders on each 5 s update while minimised. Measured cost: 2.5 % of one core.
 - Process list collection costs 40–93 ms per tick for ~320 processes; it only runs while the Processes page is open.
 - GPU temperature is never available (no vendor-specific provider); NVML is not implemented because it cannot be verified without NVIDIA hardware.
-- In the real-app session, two of four automated Ctrl+digit presses (sent with Windows SendKeys right after restoring the window) landed on a different section than expected. Cause not determined (likely focus timing in the test harness); the shortcut logic itself is covered by tests. Re-check manually.
 - `freezePrototype` is disabled because Recharts' `decimal.js-light` cannot run with a frozen `Object.prototype` (see ARCHITECTURE.md).
 - Infinite CSS animations must not be used on permanently visible elements: they keep WebView2 repainting at 60 fps (measured: ~15 % of one core in the renderer and in the GPU process). Loading skeletons (`animate-shimmer`) are the only remaining infinite animation and exist only until data arrives.
 - The frontend bundle is 671 kB (198 kB gzip), over Vite's 500 kB warning. It is loaded from disk, not over a network, so it is not split.
 - **CPU frequency on Windows** (backend) is the value from `CallNtPowerInformation`; on the dev machine it is a constant 3600 MHz (base clock), not the live boost clock. It is not shown in the UI yet; when it is (M4) it must be labelled "reported frequency" unless a better source is added.
 - Disk I/O counters are unavailable for some volumes (virtual/network drives); shown as unsupported.
 - Storage re-enumerates volumes every tick: 3.5 ms per tick in release (`tick_breakdown`, M6). Left as is.
-- Only verified on Windows 11 x64. Linux/macOS untested.
+- The app has only been run on Windows 11 x64. On Ubuntu and macOS, CI compiles it and runs all tests (including hardware tests on the CI machines), but the UI has never been opened there.
+- Installers are not code-signed, so SmartScreen warns on first run.
 - Windows test binaries need the Common Controls v6 manifest; `build.rs` embeds it for all MSVC link targets. Non-MSVC Windows toolchains are not handled.
 - The first release-build attempt exited with code 4 while `cargo clippy` was running on the same `target/` directory; its Rust error output was not captured. An unchanged rerun succeeded, so lock/file contention is the likely (unconfirmed) cause. Avoid running two cargo commands at once here.
 - `tauri build` without `--no-bundle` downloads WiX/NSIS on first run; installer creation not exercised yet.

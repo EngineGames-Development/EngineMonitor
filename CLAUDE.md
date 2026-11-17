@@ -32,6 +32,12 @@ cargo clippy --all-targets -- -D warnings   # must stay at zero warnings
 cargo fmt --check
 ```
 
+## CI and releases
+- `.github/workflows/ci.yml` runs typecheck, frontend tests, build, rustfmt, clippy and `cargo test` on Windows, Ubuntu and macOS for every push to `main` and every PR. CI machines have no GPU and unusual network adapters; hardware tests must tolerate that.
+- In `tests/ipc.rs`, `tauri::generate_context!()` must be expanded only once (the `context()` helper): two expansions fail to link on macOS.
+- Release steps are in DEVELOPMENT.md ("Making a release"). Push with plain `git push`; the repo config sets `http.sslBackend=schannel`, because Git Bash's OpenSSL can't verify GitHub's certificate on this machine.
+- Launch at login uses `auto-launch` in `src-tauri/src/autostart.rs`, fixed to the current user. Don't switch back to `tauri-plugin-autostart`: its Windows default writes the machine-wide `HKLM` key when elevated.
+
 ## Architecture
 
 **Data flow (see `ARCHITECTURE.md`).**
