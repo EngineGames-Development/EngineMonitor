@@ -3,11 +3,14 @@
 //!     cargo run --release --example tick_breakdown
 //!
 //! Prints the median of 10 ticks (1 s apart) for each collector so slow
-//! sources can be identified. Measures this machine only.
+//! sources can be identified. Measures this machine only. The app's network
+//! source refreshes addresses at most every 30 s, so its median shows the
+//! per-tick cost; the occasional full refresh costs the sysinfo figure.
 
 use std::time::{Duration, Instant};
 
 use enginemonitor_lib::gpu::GpuMonitor;
+use enginemonitor_lib::network::NetworkSource;
 use sysinfo::{
     CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System,
 };
@@ -28,6 +31,7 @@ fn main() {
     let mut sys = System::new_with_specifics(RefreshKind::nothing().with_cpu(cpu_kind)).unwrap();
     let mut disks = Disks::new_with_refreshed_list().unwrap();
     let mut nets = Networks::new_with_refreshed_list().unwrap();
+    let mut source = NetworkSource::new().unwrap();
     let mut gpu = GpuMonitor::new();
 
     let names = [
@@ -35,7 +39,8 @@ fn main() {
         "cpu frequency",
         "memory",
         "disks",
-        "networks",
+        "networks (sysinfo full refresh)",
+        "networks (app source)",
         "gpu",
     ];
     let mut samples: Vec<Vec<f64>> = vec![Vec::new(); names.len()];
@@ -58,6 +63,9 @@ fn main() {
             }),
             time(|| nets.refresh(true)),
             time(|| {
+                let _ = source.read(Instant::now());
+            }),
+            time(|| {
                 let _ = gpu.sample();
             }),
         ];
@@ -66,6 +74,6 @@ fn main() {
         }
     }
     for (name, s) in names.iter().zip(samples) {
-        println!("{name:>14}: median {:6.2} ms", median(s));
+        println!("{name:>32}: median {:6.2} ms", median(s));
     }
 }

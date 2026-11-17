@@ -1,10 +1,13 @@
 import { Card, Meter, TimeSeriesChart } from "../../design";
+import { useSettings } from "../../settings/SettingsProvider";
+import { formatWindow } from "../../lib/format";
 import { formatBytes, formatPercent, UNAVAILABLE } from "../../lib/format";
 import { LivePage, StatStrip } from "../shared";
 
 const pct = (v: number) => `${formatPercent(v)} %`;
 
 export function MemoryPage() {
+  const win = formatWindow(useSettings().settings.liveWindowSecs);
   return (
     <LivePage route="memory">
       {({ snapshot, history }) => {
@@ -25,9 +28,9 @@ export function MemoryPage() {
               ]}
             />
 
-            <Card title="Utilisation" subtitle="Physical memory, last 5 minutes">
+            <Card title="Utilisation" subtitle={`Physical memory, last ${win}`}>
               <TimeSeriesChart
-                label="Memory utilisation over the last 5 minutes"
+                label={`Memory utilisation over the last ${win}`}
                 data={history}
                 series={[{ key: "memory", label: "Memory", color: "var(--em-chart-memory)" }]}
                 yDomain={[0, 100]}

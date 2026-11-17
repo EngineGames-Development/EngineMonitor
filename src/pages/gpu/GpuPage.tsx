@@ -1,4 +1,6 @@
 import { AvailabilityBadge, Card, EmptyState, ErrorState, Meter, TimeSeriesChart } from "../../design";
+import { useSettings } from "../../settings/SettingsProvider";
+import { formatWindow } from "../../lib/format";
 import type { ReactNode } from "react";
 import type { GpuSample, Reading } from "../../ipc/types";
 import { formatBytes, formatPercent } from "../../lib/format";
@@ -52,6 +54,7 @@ export function GpuAdapterCard({ gpu }: { gpu: GpuSample }) {
 }
 
 export function GpuPage() {
+  const win = formatWindow(useSettings().settings.liveWindowSecs);
   return (
     <LivePage route="gpu">
       {({ snapshot, history }) => {
@@ -84,10 +87,10 @@ export function GpuPage() {
           <div className="space-y-4">
             <Card
               title="Utilisation"
-              subtitle={gpu.value.length > 1 ? "Busiest adapter, last 5 minutes" : "Last 5 minutes"}
+              subtitle={gpu.value.length > 1 ? `Busiest adapter, last ${win}` : `Last ${win}`}
             >
               <TimeSeriesChart
-                label="GPU utilisation over the last 5 minutes"
+                label={`GPU utilisation over the last ${win}`}
                 data={history}
                 series={[{ key: "gpu", label: "GPU", color: "var(--em-chart-gpu)" }]}
                 yDomain={[0, 100]}

@@ -6,14 +6,17 @@ export interface BadgeProps {
   tone?: Tone;
   /** Show a leading status dot. */
   dot?: boolean;
-  /** Pulse the dot (use only for live data). */
-  pulse?: boolean;
   children: ReactNode;
   className?: string;
   title?: string;
 }
 
-export function Badge({ tone = "neutral", dot, pulse, children, className, title }: BadgeProps) {
+/**
+ * Small status label. The dot is deliberately static: an infinite CSS
+ * animation (the former "pulse" on live badges) kept the WebView repainting at
+ * 60 fps and cost ~30 % of a CPU core in the release app, even when minimised.
+ */
+export function Badge({ tone = "neutral", dot, children, className, title }: BadgeProps) {
   return (
     <span
       title={title}
@@ -25,17 +28,7 @@ export function Badge({ tone = "neutral", dot, pulse, children, className, title
       )}
     >
       {dot && (
-        <span className="relative flex size-1.5">
-          {pulse && (
-            <span
-              className={cx(
-                "absolute inline-flex size-full animate-ping rounded-full opacity-60",
-                toneBg[tone],
-              )}
-            />
-          )}
-          <span className={cx("relative inline-flex size-1.5 rounded-full", toneBg[tone])} />
-        </span>
+        <span aria-hidden="true" className={cx("inline-flex size-1.5 rounded-full", toneBg[tone])} />
       )}
       {children}
     </span>

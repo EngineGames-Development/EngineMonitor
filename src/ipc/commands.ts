@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { toAppError, type AppError } from "./errors";
-import type { HistoryQuery, HistorySettings, HistoryStatus, SnapshotEvent, SystemInfo } from "./types";
+import type { AppSettings, HistoryQuery, HistorySettings, HistoryStatus, SnapshotEvent, SystemInfo } from "./types";
 
 /** Mirror of `commands::AppInfo` in Rust. */
 export interface AppInfo {
@@ -48,6 +48,25 @@ export function setProcessMonitoring(enabled: boolean): Promise<CommandResult<nu
  */
 export function terminateProcess(pid: number, startTimeSecs: number): Promise<CommandResult<null>> {
   return call<null>("terminate_process", { pid, startTimeSecs });
+}
+
+export function getAppSettings(): Promise<CommandResult<AppSettings>> {
+  return call<AppSettings>("app_settings");
+}
+
+/** Validated, persisted and applied by the backend; nothing changes if it fails. */
+export function setAppSettings(settings: AppSettings): Promise<CommandResult<AppSettings>> {
+  return call<AppSettings>("set_app_settings", { settings });
+}
+
+/** Whether the OS login item exists (the OS is the source of truth). */
+export function getLaunchAtLogin(): Promise<CommandResult<boolean>> {
+  return call<boolean>("launch_at_login");
+}
+
+/** Adds/removes the per-user login item; returns the state read back from the OS. */
+export function setLaunchAtLogin(enabled: boolean): Promise<CommandResult<boolean>> {
+  return call<boolean>("set_launch_at_login", { enabled });
 }
 
 export function getHistorySettings(): Promise<CommandResult<HistorySettings>> {

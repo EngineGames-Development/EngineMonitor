@@ -41,16 +41,23 @@ describe("history", () => {
     expect(p.diskRead).toBeNull();
   });
 
-  it("caps history at capacity, dropping the oldest points", () => {
-    let h = appendEvent([], null, makeEvent(0), 3);
+  it("keeps only points within the time window (events are 1 s apart)", () => {
+    let h = appendEvent([], null, makeEvent(0), 2_000);
     let prev = makeEvent(0);
     for (let i = 1; i <= 4; i++) {
       const e = makeEvent(i);
-      h = appendEvent(h, prev, e, 3);
+      h = appendEvent(h, prev, e, 2_000);
       prev = e;
     }
-    expect(h).toHaveLength(3);
     expect(h.map((p) => p.t)).toEqual([2, 3, 4].map((i) => makeEvent(i).snapshot.timestampMs));
+  });
+
+  it("shrinking the window trims existing history", () => {
+    let s = initialMetricsState(10_000);
+    for (let i = 0; i < 6; i++) s = metricsReducer(s, { type: "event", event: makeEvent(i), now: i });
+    expect(s.history).toHaveLength(6);
+    s = metricsReducer(s, { type: "window", ms: 2_000 });
+    expect(s.history).toHaveLength(3);
   });
 
   it("inserts a gap point when events were missed", () => {

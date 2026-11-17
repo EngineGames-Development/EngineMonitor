@@ -150,6 +150,11 @@ impl History {
         self.reader.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Runs `f` with the read connection (also used for settings writes).
+    pub fn with_db<T>(&self, f: impl FnOnce(&Connection) -> T) -> T {
+        f(&self.reader())
+    }
+
     pub fn settings(&self) -> HistorySettings {
         HistorySettings {
             enabled: self.config.enabled.load(Ordering::Relaxed),

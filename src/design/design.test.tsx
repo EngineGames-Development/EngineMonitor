@@ -6,6 +6,7 @@ import { AvailabilityBadge, availabilityDetail } from "./Availability";
 import { clampPercent, Meter } from "./Meter";
 import { SegmentedControl } from "./SegmentedControl";
 import { ErrorState } from "./States";
+import { formatClock, formatDateTime } from "./TimeSeriesChart";
 import { toneForUtilisation } from "./tone";
 
 describe("Meter", () => {
@@ -81,5 +82,15 @@ describe("ErrorState", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("access denied (os error 5)");
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
     expect(retried).toBe(1);
+  });
+});
+
+describe("chart time formatters", () => {
+  it("format valid timestamps and return a dash for invalid ones instead of throwing", () => {
+    const t = new Date(2026, 0, 2, 13, 4, 5).getTime();
+    expect(formatClock(t)).toMatch(/04.*05/);
+    expect(formatDateTime(t)).toMatch(/04/);
+    expect(formatClock(Number.NaN)).toBe("—");
+    expect(formatDateTime(Number.POSITIVE_INFINITY)).toBe("—");
   });
 });

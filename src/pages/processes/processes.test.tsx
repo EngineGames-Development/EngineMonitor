@@ -12,7 +12,7 @@ const tauri = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: tauri.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauri.listen }));
 
-import { MetricsProvider } from "../../metrics/MetricsProvider";
+import { TestProviders } from "../../test/providers";
 import { ProcessesPage } from "./ProcessesPage";
 
 const OWN_PID = 999;
@@ -31,9 +31,9 @@ function eventWith(processes: ProcessSample[], seq = 1): SnapshotEvent {
 
 async function renderWithProcesses(processes = [editor, browser, self]) {
   const utils = render(
-    <MetricsProvider>
+    <TestProviders>
       <ProcessesPage />
-    </MetricsProvider>,
+    </TestProviders>,
   );
   await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("latest_snapshot", undefined));
   act(() => tauri.handler!({ payload: eventWith(processes) }));
@@ -69,9 +69,9 @@ describe("Processes page", () => {
 
   it("shows a loading state until a process list arrives", async () => {
     render(
-      <MetricsProvider>
+      <TestProviders>
         <ProcessesPage />
-      </MetricsProvider>,
+      </TestProviders>,
     );
     await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("latest_snapshot", undefined));
     act(() => tauri.handler!({ payload: makeEvent(1) })); // no processes yet

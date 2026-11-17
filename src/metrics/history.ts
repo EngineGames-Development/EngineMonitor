@@ -22,8 +22,10 @@ export interface HistoryPoint {
   cores: (number | null)[];
 }
 
-/** Default live-history length: 5 minutes at the default 1 s interval. */
-export const DEFAULT_HISTORY_CAPACITY = 300;
+/** Default live window (ms). */
+export const DEFAULT_WINDOW_MS = 5 * 60_000;
+/** Hard cap on points regardless of window (60 min at 250 ms = 14 400). */
+export const MAX_HISTORY_POINTS = 15_000;
 
 /** Sum of the non-null values, or null if there are none. */
 export function sumKnown(values: Iterable<number | null>): number | null {
@@ -73,7 +75,7 @@ export function appendEvent(
   history: readonly HistoryPoint[],
   previous: SnapshotEvent | null,
   event: SnapshotEvent,
-  capacity: number = DEFAULT_HISTORY_CAPACITY,
+  windowMs: number = DEFAULT_WINDOW_MS,
 ): HistoryPoint[] {
   const last = history[history.length - 1];
   // Ignore duplicates/out-of-order deliveries (e.g. latest_snapshot racing the first event).
@@ -85,9 +87,20 @@ export function appendEvent(
   }
   additions.push(toHistoryPoint(event.snapshot));
 
-  const next = history.length + additions.length > capacity
-    ? history.slice(history.length + additions.length - capacity)
-    : history.slice();
-  next.push(...additions);
-  return next;
+  return trimToWindow([...history, ...additions], windowMs);
+}
+
+/**
+ * Keeps points within `windowMs` of the newest one (by time, so changing the
+ * refresh interval does not change how much time the graphs show), plus a
+ * hard cap on the number of points.
+ */
+export function trimToWindow(points: HistoryPoint[], windowMs: number): HistoryPoint[] {
+  const newest = points[points.length - 1];
+  if (!newest) return points;
+  const cutoff = newest.t - windowMs;
+  let start = 0;
+  while (start < points.length && points[start]!.t < cutoff) start++;
+  start = Math.max(start, points.length - MAX_HISTORY_POINTS);
+  return start > 0 ? points.slice(start) : points;
 }

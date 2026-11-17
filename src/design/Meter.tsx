@@ -34,8 +34,10 @@ export function Meter({ value, tone, baseTone = "primary", label, className, siz
         className,
       )}
     >
+      {/* No width transition: animating width re-runs layout every frame, and
+          with values updating every second the meters were never at rest. */}
       <div
-        className={cx("h-full rounded-full transition-[width] duration-500 ease-out-soft", toneBg[resolved])}
+        className={cx("h-full rounded-full", toneBg[resolved])}
         style={{ width: `${pct}%` }}
       />
     </div>

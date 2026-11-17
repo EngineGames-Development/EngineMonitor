@@ -1,6 +1,6 @@
 # EngineMonitor — Development Status
 
-Last updated: 2026-11-16 · Current milestone: **5 (History) — complete** · Next: 6 (settings, themes, performance)
+Last updated: 2026-11-17 · Current milestone: **6 (Settings & performance) — complete except the launch-at-login toggle check (uncommitted)** · Next: 7 (hardening, installers, docs)
 
 Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 
@@ -100,6 +100,42 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 - **Real app** (`tauri dev`, opened at `#history`): recorded 8 points in the first minute into `%APPDATA%\dev.enginemonitor.desktop\history.sqlite3`; the History page rendered CPU/memory/swap, network and disk charts and the settings card (screenshot checked).
 - **Database size measured**: 100.6 bytes/row, 11.6 MiB for 7 days at 5 s (estimate shown in the UI: 11.5 MiB).
 
+## Milestone 6 — Settings & performance ✅ (one item 🟡, see below)
+
+| Item | Status | Notes |
+|---|---|---|
+| App settings backend (`settings/app.rs`) | ✅ | Theme, refresh interval (250 ms–10 s), live graph window (60 s–1 h), network unit, smooth charts, Overview visibility, start minimised. Validated, unknown fields rejected, older payloads load with defaults. Persisted in SQLite; applied to the sampler immediately. |
+| Commands | ✅ | `app_settings`, `set_app_settings`, `set_window_visible`, `launch_at_login`, `set_launch_at_login`. Autostart plugin JS commands are not granted (IPC test). |
+| Frontend settings | ✅ | `SettingsProvider` (backend = source of truth, theme cached for first paint, malformed payloads rejected), new Settings page, theme from settings, network unit, live window, smooth charts, Overview visibility applied everywhere. Verified in the real app. |
+| Hidden-window throttle | ✅ | Minimise → `intervalMs` 5000 and no process list; restore → configured interval at once. Verified in the release app. |
+| Start minimised | ✅ | Verified in the real app (window iconic at start, sampler at 5 s, restore returns to 1 s). **Bug found and fixed:** a window minimised during start-up emits no resize event, so the throttle did not engage; start-up now syncs visibility explicitly. |
+| Launch at login | 🟡 | Implemented (per-user login item, no admin rights); the read path is tested and the switch is tested against a mocked backend. Enabling/disabling has **not** been exercised on this machine, because it changes the real Windows login items. |
+| Faster Windows network counters | ✅ | Own `GetIfTable2` reader (`network/windows_table.rs`); IP addresses from `sysinfo` only on interface-set change or every 30 s. Network cost per tick: **20.0 ms → 3.2 ms** (release, `tick_breakdown`, median of 11). A hardware test checks it lists the same interfaces, MACs, addresses, MTUs and counters as a full `sysinfo` refresh. |
+| Frontend rendering cost | ✅ | Found by profiling the release app through the WebView2 DevTools protocol: an infinite `animate-ping` on "Live" badges, a 500 ms `width` transition on meters (layout on every frame) and a per-call `toLocaleTimeString` in chart axes. Removed, or replaced with cached `Intl.DateTimeFormat`. |
+| Release benchmark | ✅ | See below. |
+
+### Release benchmark (Windows 11, Ryzen 3 3200G, 4 cores; Overview page, 1 s interval, 60 s per phase)
+
+| | Backend CPU (% of one core) | Backend private memory | WebView2 CPU (% of one core, all 6 processes) | WebView2 private memory |
+|---|---|---|---|---|
+| Before the frontend fixes, visible | 0.62 % | 13.1 MB | 29.8 % | 320 MB |
+| Before the frontend fixes, minimised | 0.10 % | 13.0 MB | 18.3 % | 333 MB |
+| **After, visible** | **0.70 %** | **12.9 MB** | **7.5 %** | **285 MB** |
+| **After, minimised** | **0.31 %** | **13.4 MB** | **2.5 %** | **285–395 MB** (see memory note) |
+
+- Whole app while visible: about 8 % of one core, i.e. about 2 % of this 4-core machine. The backend's share is under 1 % of one core.
+- Renderer (DevTools metrics, visible): task time 117 → 60 ms/s, layout 10.7 → 1.2 ms/s, layouts 48 → 12 per second.
+- Memory over 4.5 minutes (visible, minimised, restored): renderer private memory oscillates between 66 and 120 MB (garbage collection) without a trend; the GPU process rose from 112 to about 166 MB as its caches warmed, then stayed flat. No leak seen in that window; a multi-hour soak test is left for M7.
+- WebView2's own processes (browser, GPU, renderer) dominate the memory footprint. Working-set sums across processes overstate the total, because shared pages are counted in each process.
+- Method: `TotalProcessorTime` and `PrivateMemorySize64` deltas of `enginemonitor.exe` and its WebView2 child processes (PowerShell). The scripts are not part of the repository.
+
+### Verification for M6
+- `cargo test` — **115 passing** (95 unit, 5 hardware incl. the network-source comparison, 15 IPC incl. settings applied to the sampler, hidden throttle, persistence across restart, invalid settings rejected). `cargo clippy --all-targets -- -D warnings` clean, `cargo fmt --check` clean.
+- `npm test` — **123 passing**; typecheck clean; `npm run build` succeeds.
+- `npx tauri build --no-bundle` — release exe builds (7.3 MB).
+- Real app: hidden throttle, start minimised and the Settings page (renders without errors; a change made through the UI is saved by the backend) were checked through the WebView2 DevTools protocol on a local-only debug port enabled just for the check. Setting changes made for the check were reverted.
+- Debug builds now use `debug = "line-tables-only"` (deps without debug info): the previous full-debug `target/` had grown to ~19 GB on a nearly full C: drive (0.17 GB free), causing a build failure; `cargo clean` freed 19.1 GiB.
+
 ## Feature status
 
 | Area | Status | Milestone |
@@ -111,26 +147,29 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | GPU monitoring | 🟡 Windows ✅ (utilisation, VRAM); temperature unsupported; Linux/macOS unverified | 4 |
 | Process manager | ✅ | 4 |
 | History (SQLite) | ✅ | 5 |
-| Settings: theme | ✅ (localStorage, interim) | 1 → 6 |
-| Settings: refresh, graphs, retention, startup, visibility | ⬜ Shown as "Not implemented" in UI | 6 |
+| Settings: theme (SQLite, cached for first paint) | ✅ | 6 |
+| Settings: refresh, graphs, network unit, retention, visibility, start minimised | ✅ | 6 |
+| Settings: launch at login | 🟡 implemented; toggle not exercised on a real machine | 6 |
 | Settings: application info | ✅ | 1 |
 | Installers (MSI/NSIS/DMG/AppImage) | ⬜ Not yet verified | 7 |
-| Benchmarks | ⬜ (only the single debug timing above) | 7 |
+| Benchmarks | ✅ release CPU/memory, visible vs minimised (M6); long soak test ⬜ | 6 / 7 |
 | Docs: INSTALLATION, DEVELOPMENT, CONTRIBUTING, LICENSE | ⬜ | 7 (README, ARCHITECTURE, CLAUDE.md exist) |
 
 ## Known issues / limitations
+- **Disk space:** the development machine's C: drive is almost full independently of this project (~10 GB free after the M6 builds). Release builds need several GB in `src-tauri/target/`.
 - The real-app verification session left a small real history database (a few minutes of data) in `%APPDATA%\dev.enginemonitor.desktop\`; it is the app's normal data file and can be cleared from the History page.
 - History records only while EngineMonitor runs (no background service); gaps are shown for periods it was closed.
-- **Network refresh is the most expensive part of a tick (~27 ms, release).** `sysinfo` calls `GetIfTable2` every tick, which enumerates all (incl. hidden filter) interfaces. Planned M6 fix: query known interfaces with `GetIfEntry2`.
+- On Windows, a changed IP address on an existing interface can take up to 30 s to appear (addresses are re-read every 30 s or when an interface appears or disappears). Traffic counters are read every tick.
+- The WebView is not told that the window is minimised (`document.hidden` stays false on WebView2), so it still re-renders on each 5 s update while minimised. Measured cost: 2.5 % of one core.
 - Process list collection costs 40–93 ms per tick for ~320 processes; it only runs while the Processes page is open.
 - GPU temperature is never available (no vendor-specific provider); NVML is not implemented because it cannot be verified without NVIDIA hardware.
 - In the real-app session, two of four automated Ctrl+digit presses (sent with Windows SendKeys right after restoring the window) landed on a different section than expected. Cause not determined (likely focus timing in the test harness); the shortcut logic itself is covered by tests. Re-check manually.
 - `freezePrototype` is disabled because Recharts' `decimal.js-light` cannot run with a frozen `Object.prototype` (see ARCHITECTURE.md).
-- The sampler keeps running while the window is minimised/hidden; pausing or slowing it is planned for M6.
-- The renderer CPU cost of re-rendering six charts per second has not been optimised or measured in a release build yet (M6).
+- Infinite CSS animations must not be used on permanently visible elements: they keep WebView2 repainting at 60 fps (measured: ~15 % of one core in the renderer and in the GPU process). Loading skeletons (`animate-shimmer`) are the only remaining infinite animation and exist only until data arrives.
+- The frontend bundle is 671 kB (198 kB gzip), over Vite's 500 kB warning. It is loaded from disk, not over a network, so it is not split.
 - **CPU frequency on Windows** (backend) is the value from `CallNtPowerInformation`; on the dev machine it is a constant 3600 MHz (base clock), not the live boost clock. It is not shown in the UI yet; when it is (M4) it must be labelled "reported frequency" unless a better source is added.
 - Disk I/O counters are unavailable for some volumes (virtual/network drives); shown as unsupported.
-- Storage re-enumerates volumes every tick; cost is small (~18 ms for the whole debug tick) but should be re-measured in release and possibly reduced in M6.
+- Storage re-enumerates volumes every tick: 3.5 ms per tick in release (`tick_breakdown`, M6). Left as is.
 - Only verified on Windows 11 x64. Linux/macOS untested.
 - Windows test binaries need the Common Controls v6 manifest; `build.rs` embeds it for all MSVC link targets. Non-MSVC Windows toolchains are not handled.
 - The first release-build attempt exited with code 4 while `cargo clippy` was running on the same `target/` directory; its Rust error output was not captured. An unchanged rerun succeeded, so lock/file contention is the likely (unconfirmed) cause. Avoid running two cargo commands at once here.

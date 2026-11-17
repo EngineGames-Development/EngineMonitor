@@ -1,11 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  readStoredPreference,
-  resolveTheme,
-  THEME_STORAGE_KEY,
-  type ResolvedTheme,
-  type ThemePreference,
-} from "./theme";
+import { useSettings } from "../settings/SettingsProvider";
+import { resolveTheme, type ResolvedTheme, type ThemePreference } from "./theme";
 
 interface ThemeContextValue {
   preference: ThemePreference;
@@ -23,19 +18,15 @@ function systemPrefersDark(): boolean {
     : true;
 }
 
-function safeStorage(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
+/**
+ * Applies the theme from the persisted settings to `<html data-theme>` and
+ * follows the OS while "system" is selected. Must be inside SettingsProvider.
+ */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>(() => readStoredPreference(safeStorage()));
+  const { settings, update } = useSettings();
+  const preference = settings.theme;
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
 
-  // Track OS theme changes only while "system" is selected.
   useEffect(() => {
     if (preference !== "system" || typeof window.matchMedia !== "function") return;
     const mql = window.matchMedia(DARK_QUERY);
@@ -51,15 +42,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = resolved;
   }, [resolved]);
 
-  const setPreference = useCallback((pref: ThemePreference) => {
-    setPreferenceState(pref);
-    try {
-      safeStorage()?.setItem(THEME_STORAGE_KEY, pref);
-    } catch (err) {
-      // Not fatal: the theme still applies for this session.
-      console.warn("EngineMonitor: could not persist theme preference", err);
-    }
-  }, []);
+  const setPreference = useCallback(
+    (pref: ThemePreference) => {
+      void update({ theme: pref }).then((err) => {
+        if (err) console.warn("EngineMonitor: could not save theme", err.message);
+      });
+    },
+    [update],
+  );
 
   const value = useMemo(() => ({ preference, resolved, setPreference }), [preference, resolved, setPreference]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

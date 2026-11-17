@@ -7,6 +7,7 @@ import { LiveCharts } from "./LiveCharts";
 import { StorageCard } from "./StorageCard";
 import { SystemCard } from "./SystemCard";
 import { GpuCard } from "./GpuCard";
+import { useSettings } from "../../settings/SettingsProvider";
 
 function LoadingLayout() {
   return (
@@ -23,6 +24,7 @@ function LoadingLayout() {
 
 export function OverviewPage() {
   const metrics = useMetrics();
+  const { visible } = useSettings().settings;
   const route = routeById("overview");
 
   return (
@@ -49,10 +51,10 @@ export function OverviewPage() {
             <LiveCharts history={metrics.history} className="xl:col-span-2" />
             <div className="grid content-start gap-4">
               <SystemCard info={metrics.info} snapshot={metrics.latest.snapshot} />
-              <GpuCard gpu={metrics.latest.snapshot.gpu} />
+              {visible.gpu && <GpuCard gpu={metrics.latest.snapshot.gpu} />}
             </div>
           </div>
-          <StorageCard volumes={metrics.latest.snapshot.storage} />
+          {visible.storage && <StorageCard volumes={metrics.latest.snapshot.storage} />}
         </div>
       )}
     </>

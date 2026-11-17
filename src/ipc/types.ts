@@ -210,3 +210,55 @@ export interface HistoryStatus {
   lastError: string | null;
   databasePath: string;
 }
+
+/** `settings::app::AppSettings`. */
+export type ThemeSetting = "dark" | "light" | "system";
+export type NetworkUnit = "bits" | "bytes";
+
+export interface MetricVisibility {
+  gpu: boolean;
+  disk: boolean;
+  network: boolean;
+  storage: boolean;
+}
+
+export interface AppSettings {
+  theme: ThemeSetting;
+  /** Live sampling interval while the window is visible (250-10000). */
+  refreshIntervalMs: number;
+  /** Real-time graph window (60-3600). */
+  liveWindowSecs: number;
+  networkUnit: NetworkUnit;
+  smoothCharts: boolean;
+  visible: MetricVisibility;
+  startMinimized: boolean;
+}
+
+/** Must match `AppSettings::default()` in Rust. */
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  theme: "dark",
+  refreshIntervalMs: 1000,
+  liveWindowSecs: 300,
+  networkUnit: "bits",
+  smoothCharts: true,
+  visible: { gpu: true, disk: true, network: true, storage: true },
+  startMinimized: false,
+};
+
+/** Minimal runtime check of a settings payload (guards against mismatched backends). */
+export function isAppSettings(v: unknown): v is AppSettings {
+  if (typeof v !== "object" || v === null) return false;
+  const s = v as Record<string, unknown>;
+  const vis = s.visible as Record<string, unknown> | null | undefined;
+  return (
+    (s.theme === "dark" || s.theme === "light" || s.theme === "system") &&
+    typeof s.refreshIntervalMs === "number" &&
+    typeof s.liveWindowSecs === "number" &&
+    (s.networkUnit === "bits" || s.networkUnit === "bytes") &&
+    typeof s.smoothCharts === "boolean" &&
+    typeof s.startMinimized === "boolean" &&
+    typeof vis === "object" &&
+    vis !== null &&
+    ["gpu", "disk", "network", "storage"].every((k) => typeof vis[k] === "boolean")
+  );
+}

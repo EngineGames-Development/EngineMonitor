@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { useChartPrefs } from "./chartPrefs";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export interface Series<K extends string> {
@@ -16,7 +17,7 @@ export interface TimeSeriesChartProps<K extends string, D extends { t: number } 
   /** Formats values for the axis and tooltip. */
   format: (value: number) => string;
   height: number;
-  /** Visible time window in ms; the x-axis always ends at the newest point. */
+  /** Visible time window in ms (default: the user's live window); the x-axis ends at the newest point. */
   windowMs?: number;
   /** Fixed x-range (ms); overrides `windowMs`. Used for historical ranges. */
   xDomain?: [number, number];
@@ -28,12 +29,24 @@ export interface TimeSeriesChartProps<K extends string, D extends { t: number } 
   label: string;
 }
 
-function formatClock(t: number): string {
-  return new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+// Formatters are created once: `toLocale*String` builds a new Intl formatter
+// per call, and Recharts formats every tick on every render. Profiling the
+// release app showed this as the single hottest script function.
+const clockFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+// Intl's format() throws on NaN/Infinity, unlike toLocale*String.
+export function formatClock(t: number): string {
+  return Number.isFinite(t) ? clockFormat.format(t) : "—";
 }
 
-function formatDateTime(t: number): string {
-  return new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+export function formatDateTime(t: number): string {
+  return Number.isFinite(t) ? dateTimeFormat.format(t) : "—";
 }
 
 /**
@@ -46,16 +59,18 @@ export function TimeSeriesChart<K extends string, D extends { t: number } & Part
   yDomain,
   format,
   height,
-  windowMs = 5 * 60_000,
+  windowMs,
   sparkline = false,
   label,
   xDomain: fixedDomain,
   timeFormat = "time",
 }: TimeSeriesChartProps<K, D>) {
   const formatTime = timeFormat === "datetime" ? formatDateTime : formatClock;
+  const { smooth, liveWindowMs } = useChartPrefs();
   const gradientBase = useId().replace(/:/g, "");
   const newest = data.length > 0 ? data[data.length - 1]!.t : 0;
-  const xDomain: [number, number] = fixedDomain ?? [newest - windowMs, newest];
+  const span = windowMs ?? liveWindowMs;
+  const xDomain: [number, number] = fixedDomain ?? [newest - span, newest];
 
   return (
     <div role="img" aria-label={label} style={{ height }} className="w-full min-w-0">
@@ -116,7 +131,7 @@ export function TimeSeriesChart<K extends string, D extends { t: number } & Part
               key={s.key}
               dataKey={s.key}
               name={s.label}
-              type="monotone"
+              type={smooth ? "monotone" : "linear"}
               stroke={s.color}
               strokeWidth={sparkline ? 1.5 : 1.75}
               fill={`url(#${gradientBase}-${s.key})`}

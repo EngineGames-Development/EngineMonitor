@@ -12,6 +12,11 @@ const COMMANDS: &[&str] = &[
     "query_history",
     "history_status",
     "clear_history",
+    "app_settings",
+    "set_app_settings",
+    "set_window_visible",
+    "launch_at_login",
+    "set_launch_at_login",
 ];
 
 fn main() {

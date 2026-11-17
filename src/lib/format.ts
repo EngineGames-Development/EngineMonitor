@@ -104,3 +104,10 @@ export function formatDuration(totalSeconds: number): string {
   if (minutes > 0) return `${minutes}m ${pad(seconds)}s`;
   return `${seconds}s`;
 }
+
+/** Live-window label: "1 minute", "5 minutes", "1 hour". */
+export function formatWindow(secs: number): string {
+  if (secs >= 3600 && secs % 3600 === 0) return secs === 3600 ? "hour" : `${secs / 3600} hours`;
+  const min = Math.round(secs / 60);
+  return min === 1 ? "minute" : `${min} minutes`;
+}

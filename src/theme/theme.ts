@@ -4,10 +4,8 @@ export type ResolvedTheme = "dark" | "light";
 export const THEME_PREFERENCES: readonly ThemePreference[] = ["dark", "light", "system"];
 
 /**
- * Storage key for the theme preference.
- *
- * Interim: until the SQLite-backed settings store lands (milestone 6), the
- * preference is kept in WebView localStorage so it survives restarts.
+ * localStorage key caching the theme for the first paint only. The persisted
+ * value lives in the backend settings (SQLite); see SettingsProvider.
  */
 export const THEME_STORAGE_KEY = "enginemonitor.theme";
 

@@ -122,3 +122,53 @@ fn snapshot_serialises_to_camel_case_json() {
         .is_some());
     assert!(json["memory"].get("totalBytes").is_some());
 }
+
+/// The Windows fast path (`GetIfTable2` every tick, addresses refreshed
+/// rarely) must show the same interfaces, MACs, addresses and counters as a
+/// full `sysinfo` refresh. On other platforms both paths are `sysinfo`.
+#[test]
+fn network_source_matches_a_full_sysinfo_refresh() {
+    use std::collections::BTreeMap;
+    use std::time::Instant;
+
+    use enginemonitor_lib::network::{raw_from_sysinfo, NetworkSource};
+
+    let mut source = NetworkSource::new().expect("network source");
+    let reference = sysinfo::Networks::new_with_refreshed_list().expect("networks");
+    let theirs: BTreeMap<_, _> = raw_from_sysinfo(&reference)
+        .into_iter()
+        .map(|r| (r.name.clone(), r))
+        .collect();
+    // Read after the reference, so our counters can only be equal or higher.
+    let ours: BTreeMap<_, _> = source
+        .read(Instant::now())
+        .into_iter()
+        .map(|r| (r.name.clone(), r))
+        .collect();
+
+    assert_eq!(
+        ours.keys().collect::<Vec<_>>(),
+        theirs.keys().collect::<Vec<_>>(),
+        "same interface list"
+    );
+    for (name, o) in &ours {
+        let t = &theirs[name];
+        assert_eq!(o.mac, t.mac, "{name}: MAC");
+        let sorted = |a: &[_]| {
+            let mut v = a.to_vec();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            sorted(&o.addresses),
+            sorted(&t.addresses),
+            "{name}: addresses"
+        );
+        assert_eq!(o.mtu, t.mtu, "{name}: MTU");
+        assert!(o.total_received >= t.total_received, "{name}: rx counter");
+        assert!(
+            o.total_transmitted >= t.total_transmitted,
+            "{name}: tx counter"
+        );
+    }
+}

@@ -4,8 +4,9 @@
 //! (key per settings group). Invalid or missing values fall back to defaults
 //! instead of failing start-up; the reason is logged.
 //!
-//! Milestone 5 implements the history group; the application settings
-//! (theme, refresh interval, …) follow in milestone 6.
+//! Groups: `history` (this module) and `app` ([`app`]).
+
+pub mod app;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};

@@ -2,17 +2,28 @@
 
 A cross-platform desktop system monitor built with Rust, Tauri 2 and React.
 
-> **Status: early development (milestone 1 of 7).** The application shell,
-> design system, navigation and theming work. **No system metrics are
-> collected yet**; every monitoring section says so explicitly. See
-> [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) for exact progress.
+> **Status: milestone 6 of 7 (settings & performance) done; milestone 7
+> (hardening, installers, remaining docs) next.** Verified on Windows 11 x64
+> only; Linux and macOS are untested. See
+> [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) for exact progress, including
+> what is partial or unsupported.
 
 ## What works today
-- Desktop window with a persistent sidebar for all sections (Overview, CPU,
-  Memory, GPU, Processes, Storage, Network, History, Settings).
-- Dark and light themes plus "follow system"; the choice is remembered.
-- Keyboard navigation: `Ctrl+1` … `Ctrl+9` (`⌘` on macOS).
-- Settings → Application shows version and platform info reported by the Rust backend.
+- **Live monitoring** pushed from one Rust sampler thread: CPU (total and per
+  core), memory and swap, storage volumes and disk I/O, network interfaces and
+  traffic, GPU utilisation and dedicated memory (Windows, via DXGI + PDH).
+  Values the OS doesn't provide are labelled unavailable, never faked.
+- **Sections:** Overview, CPU, Memory, GPU, Processes, Storage, Network,
+  History, Settings, with keyboard navigation `Ctrl+1` … `Ctrl+9` (`⌘` on macOS).
+- **Process manager:** search, sort, filter, details and guarded termination
+  (with confirmation; critical system processes are refused).
+- **History:** averaged samples in a local SQLite database with configurable
+  interval and retention (1–365 days), and charts over 15 minutes to 30 days.
+- **Settings:** theme (dark, light, system), refresh interval, live graph
+  length, network units (bits/bytes), Overview sections, start minimised,
+  launch at login. Settings are stored in the local database.
+- **Low overhead:** about 8 % of one CPU core in total while visible and about
+  3 % while minimised, measured on a 4-core Ryzen 3 3200G (release build).
 
 ## Requirements
 - Rust (stable, 1.80+) and Node.js 20+.

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
 import { getLatestSnapshot, getSystemInfo } from "../ipc/commands";
 import { subscribeSnapshots, type Unsubscribe } from "../ipc/events";
+import { useSettings } from "../settings/SettingsProvider";
 import { initialMetricsState, metricsReducer, type MetricsState } from "./store";
 
 const MetricsContext = createContext<MetricsState | null>(null);
@@ -13,7 +14,12 @@ const STALE_CHECK_MS = 1_000;
  * Pages read from context and never subscribe themselves.
  */
 export function MetricsProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(metricsReducer, undefined, () => initialMetricsState());
+  const liveWindowMs = useSettings().settings.liveWindowSecs * 1000;
+  const [state, dispatch] = useReducer(metricsReducer, liveWindowMs, initialMetricsState);
+
+  useEffect(() => {
+    dispatch({ type: "window", ms: liveWindowMs });
+  }, [liveWindowMs]);
 
   useEffect(() => {
     let disposed = false;

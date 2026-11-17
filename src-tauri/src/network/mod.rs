@@ -5,12 +5,18 @@
 //! aggregate speed excludes loopback interfaces, which would otherwise count
 //! local traffic as network traffic.
 
+mod source;
+#[cfg(windows)]
+mod windows_table;
+
+pub use source::{raw_from_sysinfo, NetworkSource};
+
 use std::collections::HashSet;
 use std::net::IpAddr;
 use std::time::Instant;
 
 use serde::Serialize;
-use sysinfo::{InterfaceOperationalState, Networks};
+use sysinfo::InterfaceOperationalState;
 
 use crate::rate::RateMap;
 
@@ -117,8 +123,10 @@ impl NetworkCollector {
         let mut seen = HashSet::with_capacity(raw.len());
         let mut interfaces: Vec<InterfaceSample> = raw
             .into_iter()
-            .map(|r| {
+            .map(|mut r| {
                 seen.insert(r.name.clone());
+                // The OS (and sysinfo's set) give no stable order; IPv4 first.
+                r.addresses.sort();
                 let loopback = is_loopback(&r.name, &r.addresses);
                 InterfaceSample {
                     receive_bytes_per_sec: self.rx.update(&r.name, r.total_received, now),
@@ -162,28 +170,6 @@ impl NetworkCollector {
             transmit_bytes_per_sec: sum_rates(external().map(|i| i.transmit_bytes_per_sec)),
             interfaces,
         }
-    }
-
-    /// Call after `Networks::refresh(true)`.
-    pub fn sample(&mut self, networks: &Networks, now: Instant) -> NetworkSample {
-        let raw = networks
-            .iter()
-            .map(|(name, data)| RawInterface {
-                name: name.to_string_lossy().into_owned(),
-                state: data.operational_state().into(),
-                mac: data.mac_address().0,
-                addresses: data
-                    .ip_networks()
-                    .iter()
-                    .map(|n| (n.addr, n.prefix))
-                    .collect(),
-                mtu: data.mtu(),
-                link_speed_bps: data.receive_link_speed(),
-                total_received: data.total_received(),
-                total_transmitted: data.total_transmitted(),
-            })
-            .collect();
-        self.build(raw, now)
     }
 }
 
@@ -276,6 +262,24 @@ mod tests {
         assert_eq!(i.mac_address.as_deref(), Some("00:1a:2b:3c:4d:5e"));
         assert_eq!(i.addresses, vec!["192.168.1.20/24".to_string()]);
         assert_eq!(i.mtu, Some(1500));
+    }
+
+    #[test]
+    fn addresses_are_sorted_ipv4_first() {
+        let mut c = NetworkCollector::new();
+        let raw = RawInterface {
+            addresses: vec![
+                ("fe80::1".parse().unwrap(), 64),
+                ("10.0.0.2".parse().unwrap(), 8),
+                ("2001:db8::1".parse().unwrap(), 64),
+            ],
+            ..iface("eth0", 1, 1)
+        };
+        let s = c.build(vec![raw], Instant::now());
+        assert_eq!(
+            s.interfaces[0].addresses,
+            ["10.0.0.2/8", "2001:db8::1/64", "fe80::1/64"]
+        );
     }
 
     #[test]

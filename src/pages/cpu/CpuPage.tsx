@@ -1,4 +1,6 @@
 import { AvailabilityBadge, Card, Meter, TimeSeriesChart } from "../../design";
+import { useSettings } from "../../settings/SettingsProvider";
+import { formatWindow } from "../../lib/format";
 import { formatFrequencyMHz, formatPercent, UNAVAILABLE } from "../../lib/format";
 import { readingAvailability } from "../../metrics/availability";
 import { coreSummary } from "../overview/SystemCard";
@@ -8,6 +10,7 @@ const CPU = "var(--em-chart-cpu)";
 const pct = (v: number) => `${formatPercent(v)} %`;
 
 export function CpuPage() {
+  const win = formatWindow(useSettings().settings.liveWindowSecs);
   return (
     <LivePage route="cpu">
       {({ info, snapshot, history }) => {
@@ -43,7 +46,7 @@ export function CpuPage() {
 
             <Card title="Utilisation" subtitle={info.cpu.brand ?? "Processor"}>
               <TimeSeriesChart
-                label="CPU utilisation over the last 5 minutes"
+                label={`CPU utilisation over the last ${win}`}
                 data={history}
                 series={[{ key: "cpu", label: "CPU", color: CPU }]}
                 yDomain={[0, 100]}

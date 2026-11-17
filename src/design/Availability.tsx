@@ -41,7 +41,7 @@ export function availabilityDetail(a: Availability): string | undefined {
 export function AvailabilityBadge({ availability }: { availability: Availability }) {
   const { tone, label } = presentation[availability.state];
   return (
-    <Badge tone={tone} dot pulse={availability.state === "live"} title={availabilityDetail(availability)}>
+    <Badge tone={tone} dot title={availabilityDetail(availability)}>
       {label}
     </Badge>
   );

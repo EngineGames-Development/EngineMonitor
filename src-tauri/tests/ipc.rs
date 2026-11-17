@@ -75,6 +75,9 @@ fn plugin_commands_are_not_exposed() {
     let (_app, webview) = app();
     assert!(get_ipc_response(&webview, request("plugin:fs|read_file")).is_err());
     assert!(get_ipc_response(&webview, request("plugin:shell|execute")).is_err());
+    // The autostart plugin is installed but only used from Rust.
+    assert!(get_ipc_response(&webview, request("plugin:autostart|enable")).is_err());
+    assert!(get_ipc_response(&webview, request("plugin:autostart|disable")).is_err());
 }
 
 #[test]
@@ -370,4 +373,149 @@ fn history_failure_does_not_stop_live_monitoring() {
     rx.recv_timeout(Duration::from_secs(5))
         .expect("snapshots still flow");
     let _ = std::fs::remove_file(blocker);
+}
+
+fn app_in(
+    dir: std::path::PathBuf,
+) -> (
+    App<tauri::test::MockRuntime>,
+    WebviewWindow<tauri::test::MockRuntime>,
+) {
+    let app = enginemonitor_lib::configure(mock_builder())
+        .build(tauri::generate_context!())
+        .expect("failed to build app");
+    enginemonitor_lib::init_with_data_dir(&app, Some(dir));
+    let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("failed to build main window");
+    (app, webview)
+}
+
+fn next_event(rx: &std::sync::mpsc::Receiver<Value>) -> Value {
+    rx.recv_timeout(std::time::Duration::from_secs(12))
+        .expect("snapshot event")
+}
+
+#[test]
+fn app_settings_apply_to_sampler_and_persist_across_restart() {
+    use std::sync::mpsc;
+    use tauri::Listener;
+
+    let dir = temp_data_dir();
+    {
+        let (app, webview) = app_in(dir.clone());
+        let defaults: Value = get_ipc_response(&webview, request("app_settings"))
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert_eq!(defaults["refreshIntervalMs"], 1000);
+        assert_eq!(defaults["theme"], "dark");
+
+        let (tx, rx) = mpsc::channel::<Value>();
+        app.listen_any(enginemonitor_lib::events::SNAPSHOT_EVENT, move |e| {
+            let _ = tx.send(serde_json::from_str(e.payload()).unwrap());
+        });
+
+        let mut s = defaults.clone();
+        s["refreshIntervalMs"] = 500.into();
+        s["theme"] = "light".into();
+        get_ipc_response(
+            &webview,
+            request_with("set_app_settings", serde_json::json!({ "settings": s })),
+        )
+        .expect("save settings");
+        // The next events report (and use) the new interval.
+        let mut saw = false;
+        for _ in 0..4 {
+            if next_event(&rx)["intervalMs"] == 500 {
+                saw = true;
+                break;
+            }
+        }
+        assert!(saw, "refresh interval applied to the sampler");
+
+        // Hidden window: at most one tick per 5 s, and no process list.
+        get_ipc_response(
+            &webview,
+            request_with(
+                "set_process_monitoring",
+                serde_json::json!({ "enabled": true }),
+            ),
+        )
+        .unwrap();
+        get_ipc_response(
+            &webview,
+            request_with(
+                "set_window_visible",
+                serde_json::json!({ "visible": false }),
+            ),
+        )
+        .unwrap();
+        let mut hidden = None;
+        for _ in 0..4 {
+            let e = next_event(&rx);
+            if e["intervalMs"] == 5000 {
+                hidden = Some(e);
+                break;
+            }
+        }
+        let hidden = hidden.expect("hidden interval applied");
+        assert!(
+            hidden["processes"].is_null(),
+            "no process list while hidden"
+        );
+        get_ipc_response(
+            &webview,
+            request_with("set_window_visible", serde_json::json!({ "visible": true })),
+        )
+        .unwrap();
+        enginemonitor_lib::shutdown(&app);
+    }
+    // A new app on the same data directory starts with the saved settings.
+    let (_app, webview) = app_in(dir);
+    let loaded: Value = get_ipc_response(&webview, request("app_settings"))
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(loaded["refreshIntervalMs"], 500);
+    assert_eq!(loaded["theme"], "light");
+}
+
+#[test]
+fn invalid_app_settings_are_rejected_and_not_applied() {
+    let (_app, webview) = app();
+    let err = get_ipc_response(
+        &webview,
+        request_with(
+            "set_app_settings",
+            serde_json::json!({ "settings": { "refreshIntervalMs": 50 } }),
+        ),
+    )
+    .expect_err("too fast");
+    assert_eq!(err["kind"], "invalid_argument");
+    assert!(get_ipc_response(
+        &webview,
+        request_with(
+            "set_app_settings",
+            serde_json::json!({ "settings": { "theme": "neon" } })
+        )
+    )
+    .is_err());
+    let s: Value = get_ipc_response(&webview, request("app_settings"))
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(s["refreshIntervalMs"], 1000);
+}
+
+#[test]
+fn launch_at_login_state_is_readable() {
+    // Read-only: enabling/disabling would change the real login items of the
+    // user running the tests, so that path is verified manually.
+    let (_app, webview) = app();
+    let v: Value = get_ipc_response(&webview, request("launch_at_login"))
+        .expect("readable")
+        .deserialize()
+        .unwrap();
+    assert!(v.is_boolean());
 }

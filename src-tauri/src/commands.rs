@@ -5,11 +5,13 @@
 //! `capabilities/default.json`, otherwise the frontend cannot call it.
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Runtime, State};
+use tauri_plugin_autostart::ManagerExt;
 
 use crate::error::{AppError, AppResult};
 use crate::events::{MonitorState, SnapshotEvent};
 use crate::history::{HistoryQuery, HistoryStatus};
+use crate::settings::app::AppSettings;
 use crate::settings::HistorySettings;
 use crate::system::SystemInfo;
 
@@ -69,6 +71,53 @@ pub fn terminate_process(pid: u32, start_time_secs: u64) -> AppResult<()> {
         ));
     }
     crate::processes::terminate::terminate(pid, start_time_secs)
+}
+
+#[tauri::command]
+pub fn app_settings(state: State<'_, MonitorState>) -> AppSettings {
+    state.app_settings()
+}
+
+/// Validates, persists and applies application settings (e.g. the refresh
+/// interval takes effect on the next tick).
+#[tauri::command]
+pub fn set_app_settings(
+    state: State<'_, MonitorState>,
+    settings: AppSettings,
+) -> AppResult<AppSettings> {
+    state.set_app_settings(settings)
+}
+
+/// The frontend reports window visibility; while hidden, sampling slows to
+/// at most one tick per 5 s and the process list is not collected.
+#[tauri::command]
+pub fn set_window_visible(state: State<'_, MonitorState>, visible: bool) {
+    state.set_window_visible(visible);
+}
+
+/// Whether EngineMonitor is registered to start at login (read from the OS,
+/// which is the source of truth: the user can also change it there).
+#[tauri::command]
+pub fn launch_at_login<R: Runtime>(app: AppHandle<R>) -> AppResult<bool> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| AppError::Internal(format!("could not read the login item: {e}")))
+}
+
+/// Registers or removes the per-user login item (no elevation required).
+/// Returns the state read back from the OS afterwards.
+#[tauri::command]
+pub fn set_launch_at_login<R: Runtime>(app: AppHandle<R>, enabled: bool) -> AppResult<bool> {
+    let manager = app.autolaunch();
+    let result = if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    result.map_err(|e| AppError::Internal(format!("could not change the login item: {e}")))?;
+    manager
+        .is_enabled()
+        .map_err(|e| AppError::Internal(format!("could not read the login item: {e}")))
 }
 
 #[tauri::command]

@@ -1,4 +1,6 @@
 import { Card, TimeSeriesChart } from "../../design";
+import { useSettings } from "../../settings/SettingsProvider";
+import { formatWindow } from "../../lib/format";
 import { formatByteRate, formatBytes } from "../../lib/format";
 import { sumKnown } from "../../metrics/history";
 import { StorageCard } from "../overview/StorageCard";
@@ -8,6 +10,7 @@ const READ = "var(--em-chart-disk)";
 const WRITE = "var(--em-chart-cpu)";
 
 export function StoragePage() {
+  const win = formatWindow(useSettings().settings.liveWindowSecs);
   return (
     <LivePage route="storage">
       {({ snapshot, history }) => {
@@ -33,11 +36,11 @@ export function StoragePage() {
             />
             <Card
               title="Disk activity"
-              subtitle="Volumes that report I/O counters, last 5 minutes"
+              subtitle={`Volumes that report I/O counters, last ${win}`}
               actions={<Legend items={[{ label: "Read", color: READ }, { label: "Write", color: WRITE }]} />}
             >
               <TimeSeriesChart
-                label="Disk read and write rate over the last 5 minutes"
+                label={`Disk read and write rate over the last ${win}`}
                 data={history}
                 series={[
                   { key: "diskRead", label: "Read", color: READ },

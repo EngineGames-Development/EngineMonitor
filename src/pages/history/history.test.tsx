@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
+import { SettingsProvider } from "../../settings/SettingsProvider";
 import { HistoryPage } from "./HistoryPage";
 
 function point(t: number, cpu: number | null = 10): HistoryPointDto {
@@ -84,7 +85,7 @@ describe("History page", () => {
   });
 
   it("queries the selected range and shows charts", async () => {
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     expect(await screen.findByRole("img", { name: "CPU and memory utilisation, last 1 hour" })).toBeInTheDocument();
     const call = tauri.invoke.mock.calls.find((c) => c[0] === "query_history")!;
     const args = call[1] as { fromMs: number; toMs: number; maxPoints: number };
@@ -97,7 +98,7 @@ describe("History page", () => {
 
   it("re-queries when the range changes", async () => {
     const user = userEvent.setup();
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     await screen.findByRole("img", { name: "CPU and memory utilisation, last 1 hour" });
     await user.click(screen.getByRole("radio", { name: "7 days" }));
     await vi.waitFor(() => {
@@ -107,7 +108,7 @@ describe("History page", () => {
   });
 
   it("reloads when the backend reports new history, without polling", async () => {
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     await screen.findByRole("img", { name: "CPU and memory utilisation, last 1 hour" });
     const before = tauri.invoke.mock.calls.filter((c) => c[0] === "query_history").length;
     await vi.waitFor(() => expect(tauri.updated).not.toBeNull());
@@ -117,14 +118,14 @@ describe("History page", () => {
 
   it("explains an empty range", async () => {
     tauri.invoke.mockImplementation(async (cmd: string) => (cmd === "query_history" ? query([]) : status({}, 0)));
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     expect(await screen.findByText("No history in this range yet")).toBeInTheDocument();
     expect(screen.getByText(/Recording is on: one point every 5 s/)).toBeInTheDocument();
   });
 
   it("saves settings and warns before shortening retention", async () => {
     const user = userEvent.setup();
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     await screen.findByRole("img", { name: "CPU and memory utilisation, last 1 hour" });
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
@@ -138,7 +139,7 @@ describe("History page", () => {
 
   it("clears history only after confirmation", async () => {
     const user = userEvent.setup();
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     await screen.findByRole("img", { name: "CPU and memory utilisation, last 1 hour" });
     await user.click(screen.getByRole("button", { name: "Clear history…" }));
     const dialog = screen.getByRole("dialog", { name: "Clear all history?" });
@@ -151,7 +152,7 @@ describe("History page", () => {
     tauri.invoke.mockImplementation(async () => {
       throw { kind: "internal", message: "could not open the history database: file is not a database" };
     });
-    render(<HistoryPage />);
+    render(<SettingsProvider><HistoryPage /></SettingsProvider>);
     expect(await screen.findByText("History unavailable")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("file is not a database");
   });

@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
-import { MetricsProvider } from "../metrics/MetricsProvider";
+import { TestProviders } from "../test/providers";
 import { CpuPage } from "./cpu/CpuPage";
 import { GpuPage } from "./gpu/GpuPage";
 import { MemoryPage } from "./memory/MemoryPage";
@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 async function show(page: ReactElement, snapshot: Partial<Snapshot> = {}) {
-  render(<MetricsProvider>{page}</MetricsProvider>);
+  render(<TestProviders>{page}</TestProviders>);
   await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("latest_snapshot", undefined));
   act(() => tauri.handler!({ payload: makeEvent(1, snapshot) }));
 }

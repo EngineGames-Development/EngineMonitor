@@ -1,6 +1,9 @@
 import { Badge, Card, TimeSeriesChart } from "../../design";
 import type { InterfaceSample } from "../../ipc/types";
-import { formatBitRate, formatBytes, UNAVAILABLE } from "../../lib/format";
+import { formatBytes, UNAVAILABLE } from "../../lib/format";
+import { useSettings } from "../../settings/SettingsProvider";
+import { useNetworkFormat } from "../../settings/useFormatters";
+import { formatWindow } from "../../lib/format";
 import { Legend, LivePage, StatStrip } from "../shared";
 
 const DOWN = "var(--em-chart-net-down)";
@@ -14,6 +17,7 @@ function linkSpeed(bps: number | null): string {
 }
 
 function InterfaceRow({ iface }: { iface: InterfaceSample }) {
+  const net = useNetworkFormat();
   return (
     <tr className="border-b border-line/60 align-top last:border-b-0">
       <td className="py-2.5 pr-4">
@@ -30,10 +34,10 @@ function InterfaceRow({ iface }: { iface: InterfaceSample }) {
         </div>
       </td>
       <td className="tabular py-2.5 pr-4 text-right text-fg">
-        {iface.receiveBytesPerSec === null ? UNAVAILABLE : formatBitRate(iface.receiveBytesPerSec)}
+        {iface.receiveBytesPerSec === null ? UNAVAILABLE : net.format(iface.receiveBytesPerSec)}
       </td>
       <td className="tabular py-2.5 pr-4 text-right text-fg">
-        {iface.transmitBytesPerSec === null ? UNAVAILABLE : formatBitRate(iface.transmitBytesPerSec)}
+        {iface.transmitBytesPerSec === null ? UNAVAILABLE : net.format(iface.transmitBytesPerSec)}
       </td>
       <td className="tabular py-2.5 pr-4 text-right text-fg-muted">
         {formatBytes(iface.totalReceivedBytes)} / {formatBytes(iface.totalTransmittedBytes)}
@@ -45,38 +49,40 @@ function InterfaceRow({ iface }: { iface: InterfaceSample }) {
 }
 
 export function NetworkPage() {
+  const net = useNetworkFormat();
+  const { settings } = useSettings();
   return (
     <LivePage route="network">
       {({ snapshot, history }) => {
-        const net = snapshot.network;
-        const up = net.interfaces.filter((i) => i.state === "up" && !i.loopback).length;
+        const nw = snapshot.network;
+        const up = nw.interfaces.filter((i) => i.state === "up" && !i.loopback).length;
         return (
           <div className="space-y-4">
             <StatStrip
               items={[
-                { label: "Download", value: net.receiveBytesPerSec === null ? UNAVAILABLE : formatBitRate(net.receiveBytesPerSec), hint: "All non-loopback interfaces" },
-                { label: "Upload", value: net.transmitBytesPerSec === null ? UNAVAILABLE : formatBitRate(net.transmitBytesPerSec) },
-                { label: "Interfaces", value: net.interfaces.length, hint: `${up} up` },
+                { label: "Download", value: nw.receiveBytesPerSec === null ? UNAVAILABLE : net.format(nw.receiveBytesPerSec), hint: "All non-loopback interfaces" },
+                { label: "Upload", value: nw.transmitBytesPerSec === null ? UNAVAILABLE : net.format(nw.transmitBytesPerSec) },
+                { label: "Interfaces", value: nw.interfaces.length, hint: `${up} up` },
                 {
                   label: "Received / sent",
-                  value: formatBytes(net.interfaces.filter((i) => !i.loopback).reduce((s, i) => s + i.totalReceivedBytes, 0)),
-                  hint: `${formatBytes(net.interfaces.filter((i) => !i.loopback).reduce((s, i) => s + i.totalTransmittedBytes, 0))} sent (OS counters)`,
+                  value: formatBytes(nw.interfaces.filter((i) => !i.loopback).reduce((s, i) => s + i.totalReceivedBytes, 0)),
+                  hint: `${formatBytes(nw.interfaces.filter((i) => !i.loopback).reduce((s, i) => s + i.totalTransmittedBytes, 0))} sent (OS counters)`,
                 },
               ]}
             />
             <Card
               title="Traffic"
-              subtitle="Last 5 minutes"
+              subtitle={`Last ${formatWindow(settings.liveWindowSecs)}`}
               actions={<Legend items={[{ label: "Download", color: DOWN }, { label: "Upload", color: UP }]} />}
             >
               <TimeSeriesChart
-                label="Network download and upload rate over the last 5 minutes"
+                label={`Network download and upload rate over the last ${formatWindow(settings.liveWindowSecs)}`}
                 data={history}
                 series={[
                   { key: "rx", label: "Download", color: DOWN },
                   { key: "tx", label: "Upload", color: UP },
                 ]}
-                format={formatBitRate}
+                format={net.format}
                 height={200}
               />
             </Card>
@@ -94,12 +100,12 @@ export function NetworkPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {net.interfaces.map((i) => (
+                    {nw.interfaces.map((i) => (
                       <InterfaceRow key={i.name} iface={i} />
                     ))}
                   </tbody>
                 </table>
-                {net.interfaces.length === 0 && <p className="py-6 text-center text-sm text-fg-muted">No interfaces reported.</p>}
+                {nw.interfaces.length === 0 && <p className="py-6 text-center text-sm text-fg-muted">No interfaces reported.</p>}
               </div>
             </Card>
           </div>

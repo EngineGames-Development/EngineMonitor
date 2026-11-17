@@ -1,5 +1,7 @@
 import { Card, cx, TimeSeriesChart } from "../../design";
-import { formatBitRate, formatPercent } from "../../lib/format";
+import { formatPercent, formatWindow } from "../../lib/format";
+import { useSettings } from "../../settings/SettingsProvider";
+import { useNetworkFormat } from "../../settings/useFormatters";
 import type { HistoryPoint } from "../../metrics/history";
 
 function Legend({ items }: { items: ReadonlyArray<{ label: string; color: string }> }) {
@@ -21,15 +23,18 @@ const DOWN = "var(--em-chart-net-down)";
 const UP = "var(--em-chart-net-up)";
 
 export function LiveCharts({ history, className }: { history: readonly HistoryPoint[]; className?: string }) {
+  const net = useNetworkFormat();
+  const { settings } = useSettings();
+  const windowLabel = formatWindow(settings.liveWindowSecs);
   return (
     <div className={cx("grid content-start gap-4", className)}>
       <Card
         title="CPU & memory"
-        subtitle="Utilisation, last 5 minutes"
+        subtitle={`Utilisation, last ${windowLabel}`}
         actions={<Legend items={[{ label: "CPU", color: CPU }, { label: "Memory", color: MEM }]} />}
       >
         <TimeSeriesChart
-          label="CPU and memory utilisation over the last 5 minutes"
+          label={`CPU and memory utilisation over the last ${windowLabel}`}
           data={history}
           series={[
             { key: "cpu", label: "CPU", color: CPU },
@@ -40,22 +45,24 @@ export function LiveCharts({ history, className }: { history: readonly HistoryPo
           height={200}
         />
       </Card>
-      <Card
-        title="Network traffic"
-        subtitle="All non-loopback interfaces, last 5 minutes"
-        actions={<Legend items={[{ label: "Download", color: DOWN }, { label: "Upload", color: UP }]} />}
-      >
-        <TimeSeriesChart
-          label="Network download and upload rate over the last 5 minutes"
-          data={history}
-          series={[
-            { key: "rx", label: "Download", color: DOWN },
-            { key: "tx", label: "Upload", color: UP },
-          ]}
-          format={formatBitRate}
-          height={180}
-        />
-      </Card>
+      {settings.visible.network && (
+        <Card
+          title="Network traffic"
+          subtitle={`All non-loopback interfaces, last ${windowLabel}`}
+          actions={<Legend items={[{ label: "Download", color: DOWN }, { label: "Upload", color: UP }]} />}
+        >
+          <TimeSeriesChart
+            label={`Network download and upload rate over the last ${windowLabel}`}
+            data={history}
+            series={[
+              { key: "rx", label: "Download", color: DOWN },
+              { key: "tx", label: "Upload", color: UP },
+            ]}
+            format={net.format}
+            height={180}
+          />
+        </Card>
+      )}
     </div>
   );
 }

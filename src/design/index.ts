@@ -2,6 +2,7 @@ export { AvailabilityBadge, availabilityDetail, type Availability } from "./Avai
 export { Badge } from "./Badge";
 export { Button } from "./Button";
 export { Card } from "./Card";
+export { ChartPrefsContext, useChartPrefs, type ChartPrefs } from "./chartPrefs";
 export { cx } from "./cx";
 export { Dialog } from "./Dialog";
 export { Icon, iconNames, type IconName } from "./Icon";
@@ -10,6 +11,7 @@ export { Metric } from "./Metric";
 export { PageHeader } from "./PageHeader";
 export { SegmentedControl, type SegmentOption } from "./SegmentedControl";
 export { StatTile } from "./StatTile";
+export { Switch } from "./Switch";
 export { EmptyState, ErrorState, Skeleton } from "./States";
 export { TimeSeriesChart, type Series } from "./TimeSeriesChart";
 export { toneForUtilisation, type Tone } from "./tone";

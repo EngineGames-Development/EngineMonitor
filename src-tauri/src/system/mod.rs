@@ -8,15 +8,13 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use sysinfo::{
-    CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System,
-};
+use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
 
 use crate::cpu::{self, CpuCollector, CpuInfo, CpuSample};
 use crate::error::{AppError, AppResult};
 use crate::gpu::{GpuMonitor, GpuSample};
 use crate::memory::{self, MemorySample};
-use crate::network::{NetworkCollector, NetworkSample};
+use crate::network::{NetworkCollector, NetworkSample, NetworkSource};
 use crate::processes::{ProcessCollector, ProcessList};
 use crate::reading::Reading;
 use crate::storage::{StorageCollector, VolumeSample};
@@ -86,7 +84,7 @@ fn disk_refresh() -> DiskRefreshKind {
 pub struct SystemCollector {
     sys: System,
     disks: Disks,
-    networks: Networks,
+    networks: NetworkSource,
     cpu: CpuCollector,
     storage: StorageCollector,
     network: NetworkCollector,
@@ -106,8 +104,7 @@ impl SystemCollector {
         .map_err(|e| to_app_error(e, "system information"))?;
         let disks = Disks::new_with_refreshed_list_specifics(disk_refresh())
             .map_err(|e| to_app_error(e, "disk information"))?;
-        let networks = Networks::new_with_refreshed_list()
-            .map_err(|e| to_app_error(e, "network information"))?;
+        let networks = NetworkSource::new().map_err(|e| to_app_error(e, "network information"))?;
         Ok(Self {
             sys,
             disks,
@@ -143,7 +140,7 @@ impl SystemCollector {
         self.sys.refresh_memory_specifics(memory_refresh());
         // `true`: drop volumes/interfaces that disappeared; new ones are added.
         self.disks.refresh_specifics(true, disk_refresh());
-        self.networks.refresh(true);
+        let interfaces = self.networks.read(Instant::now());
         let now = Instant::now();
 
         Snapshot {
@@ -155,7 +152,7 @@ impl SystemCollector {
             cpu: self.cpu.sample(&self.sys),
             memory: memory::sample(&self.sys),
             storage: self.storage.sample(&self.disks, now),
-            network: self.network.sample(&self.networks, now),
+            network: self.network.build(interfaces, now),
             gpu: gpu.sample(),
         }
     }

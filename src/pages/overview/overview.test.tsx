@@ -14,7 +14,7 @@ const tauri = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: tauri.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauri.listen }));
 
-import { MetricsProvider } from "../../metrics/MetricsProvider";
+import { TestProviders } from "../../test/providers";
 import { OverviewPage } from "./OverviewPage";
 
 function emit(event: SnapshotEvent) {
@@ -23,9 +23,9 @@ function emit(event: SnapshotEvent) {
 
 function renderOverview() {
   return render(
-    <MetricsProvider>
+    <TestProviders>
       <OverviewPage />
-    </MetricsProvider>,
+    </TestProviders>,
   );
 }
 

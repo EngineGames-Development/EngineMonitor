@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card, EmptyState, ErrorState, PageHeader, SegmentedControl, Skeleton, TimeSeriesChart } from "../../design";
-import { formatBitRate, formatByteRate, formatPercent } from "../../lib/format";
+import { formatByteRate, formatPercent } from "../../lib/format";
+import { useNetworkFormat } from "../../settings/useFormatters";
 import { routeById } from "../../navigation/routes";
 import { Legend } from "../shared";
 import { formatBucket, hasValues, historyChartData, mergeVolumes, RANGES } from "./historyData";
@@ -14,6 +15,7 @@ export function HistoryPage() {
   const [rangeId, setRangeId] = useState("1h");
   const range = RANGES.find((r) => r.id === rangeId) ?? RANGES[1]!;
   const history = useHistory(range.ms);
+  const net = useNetworkFormat();
   const def = routeById("history");
 
   const charts = useMemo(() => {
@@ -118,7 +120,7 @@ export function HistoryPage() {
                       { key: "netRx", label: "Download", color: "var(--em-chart-net-down)" },
                       { key: "netTx", label: "Upload", color: "var(--em-chart-net-up)" },
                     ]}
-                    format={formatBitRate}
+                    format={net.format}
                     {...common}
                   />
                 </Card>

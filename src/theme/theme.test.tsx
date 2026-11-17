@@ -1,5 +1,13 @@
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+
+/** Lets SettingsProvider finish its initial (failing, no backend) load. */
+async function settled() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+import { SettingsProvider } from "../settings/SettingsProvider";
 import { ThemeProvider, useTheme } from "./ThemeProvider";
 import { isThemePreference, readStoredPreference, resolveTheme, THEME_STORAGE_KEY } from "./theme";
 
@@ -42,15 +50,18 @@ function Probe() {
 }
 
 describe("ThemeProvider", () => {
-  it("applies the theme to <html> and persists changes", () => {
+  it("applies the theme to <html> and caches it for the next start", async () => {
     render(
-      <ThemeProvider>
-        <Probe />
-      </ThemeProvider>,
+      <SettingsProvider>
+        <ThemeProvider>
+          <Probe />
+        </ThemeProvider>
+      </SettingsProvider>,
     );
     expect(document.documentElement.dataset.theme).toBe("dark");
+    await settled();
 
-    act(() => screen.getByText("light").click());
+    await act(async () => screen.getByText("light").click());
 
     expect(screen.getByTestId("resolved")).toHaveTextContent("light");
     expect(document.documentElement.dataset.theme).toBe("light");
@@ -60,9 +71,11 @@ describe("ThemeProvider", () => {
   it("restores a persisted preference", () => {
     window.localStorage.setItem(THEME_STORAGE_KEY, "light");
     render(
-      <ThemeProvider>
-        <Probe />
-      </ThemeProvider>,
+      <SettingsProvider>
+        <ThemeProvider>
+          <Probe />
+        </ThemeProvider>
+      </SettingsProvider>,
     );
     expect(screen.getByTestId("pref")).toHaveTextContent("light");
   });

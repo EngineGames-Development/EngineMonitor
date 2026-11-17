@@ -1,6 +1,6 @@
 import type { AppError } from "../ipc/errors";
 import type { SnapshotEvent, SystemInfo } from "../ipc/types";
-import { appendEvent, DEFAULT_HISTORY_CAPACITY, type HistoryPoint } from "./history";
+import { appendEvent, DEFAULT_WINDOW_MS, trimToWindow, type HistoryPoint } from "./history";
 
 /**
  * Connection status of the live data stream.
@@ -21,17 +21,19 @@ export interface MetricsState {
   /** performance.now() when `latest` was received. */
   receivedAt: number | null;
   history: HistoryPoint[];
-  capacity: number;
+  /** How much live history to keep, ms. */
+  windowMs: number;
 }
 
 export type MetricsAction =
   | { type: "event"; event: SnapshotEvent; now: number }
   | { type: "info"; info: SystemInfo }
   | { type: "error"; error: AppError }
-  | { type: "tick"; now: number };
+  | { type: "tick"; now: number }
+  | { type: "window"; ms: number };
 
-export function initialMetricsState(capacity = DEFAULT_HISTORY_CAPACITY): MetricsState {
-  return { status: "connecting", error: null, info: null, latest: null, receivedAt: null, history: [], capacity };
+export function initialMetricsState(windowMs = DEFAULT_WINDOW_MS): MetricsState {
+  return { status: "connecting", error: null, info: null, latest: null, receivedAt: null, history: [], windowMs };
 }
 
 export function isStale(latest: SnapshotEvent | null, receivedAt: number | null, now: number): boolean {
@@ -50,13 +52,16 @@ export function metricsReducer(state: MetricsState, action: MetricsAction): Metr
         error: null,
         latest: action.event,
         receivedAt: action.now,
-        history: appendEvent(state.history, state.latest, action.event, state.capacity),
+        history: appendEvent(state.history, state.latest, action.event, state.windowMs),
       };
     }
     case "info":
       return { ...state, info: action.info, error: null, status: state.status === "error" ? "connecting" : state.status };
     case "error":
       return { ...state, status: "error", error: action.error };
+    case "window":
+      if (action.ms === state.windowMs) return state;
+      return { ...state, windowMs: action.ms, history: trimToWindow(state.history, action.ms) };
     case "tick": {
       // Recovery from "stale" happens through the next "event" action.
       if (state.status === "live" && isStale(state.latest, state.receivedAt, action.now)) {
