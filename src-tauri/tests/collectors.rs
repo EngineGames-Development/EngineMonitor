@@ -153,7 +153,12 @@ fn network_source_matches_a_full_sysinfo_refresh() {
     );
     for (name, o) in &ours {
         let t = &theirs[name];
-        assert_eq!(o.mac, t.mac, "{name}: MAC");
+        // sysinfo looks MACs up separately (GetAdaptersAddresses by name) and
+        // sometimes finds none (seen on GitHub's Windows runners); the table
+        // row then still has the real address. Compare only when it has one.
+        if t.mac != [0; 6] {
+            assert_eq!(o.mac, t.mac, "{name}: MAC");
+        }
         let sorted = |a: &[_]| {
             let mut v = a.to_vec();
             v.sort();
