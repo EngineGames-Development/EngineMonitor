@@ -1,0 +1,37 @@
+name: Bug report
+description: Something is wrong, crashes, or shows a wrong value
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Security problems? Please don't use this form; see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: EngineMonitor version
+      description: Settings → Application
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: OS, CPU and GPU
+      placeholder: Windows 11 23H2, Ryzen 5 5600X, GeForce RTX 3060
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: For wrong values, add what Task Manager / top / Activity Monitor shows at the same time.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs

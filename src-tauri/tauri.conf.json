@@ -51,6 +51,19 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "EngineGames-Development",
+    "copyright": "Copyright (c) 2026 EngineGames-Development. MIT License.",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "longDescription": "EngineMonitor is a desktop system monitor for CPU, memory, GPU, processes, storage and network, with local history. It makes no network requests and needs no administrator rights.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
   }
 }
