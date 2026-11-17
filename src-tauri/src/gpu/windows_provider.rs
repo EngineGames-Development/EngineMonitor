@@ -170,6 +170,19 @@ pub fn build_samples(
         .collect()
 }
 
+/// Microsoft's WARP software rasteriser ("Microsoft Basic Render Driver").
+const WARP_VENDOR_ID: u32 = 0x1414;
+const WARP_DEVICE_ID: u32 = 0x008C;
+
+/// Software renderers are not GPUs. DXGI marks them with
+/// `DXGI_ADAPTER_FLAG_SOFTWARE`, but on virtual machines without a GPU
+/// driver (seen on GitHub's Windows runners) WARP is listed without that
+/// flag, so it is also recognised by its well-known vendor/device IDs.
+fn is_software_adapter(flags: u32, vendor_id: u32, device_id: u32) -> bool {
+    flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0
+        || (vendor_id == WARP_VENDOR_ID && device_id == WARP_DEVICE_ID)
+}
+
 fn enumerate_adapters() -> Result<Vec<Adapter>, String> {
     // SAFETY: DXGI factory creation and adapter enumeration are plain COM
     // calls; all returned interfaces are reference-counted smart pointers.
@@ -183,7 +196,7 @@ fn enumerate_adapters() -> Result<Vec<Adapter>, String> {
             let Ok(desc) = adapter.GetDesc1() else {
                 continue;
             };
-            if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
+            if is_software_adapter(desc.Flags, desc.VendorId, desc.DeviceId) {
                 continue;
             }
             let len = desc
@@ -445,6 +458,17 @@ mod tests {
             build_samples(&[adapter()], None, None, true)[0].usage_percent,
             Reading::Error { .. }
         ));
+    }
+
+    #[test]
+    fn software_renderers_are_not_gpus() {
+        let software = DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32;
+        assert!(is_software_adapter(software, 0x1002, 0x15d8));
+        // WARP without the software flag (virtual machines).
+        assert!(is_software_adapter(0, 0x1414, 0x008c));
+        // Real hardware, and other Microsoft adapters (e.g. Hyper-V video).
+        assert!(!is_software_adapter(0, 0x1002, 0x15d8));
+        assert!(!is_software_adapter(0, 0x1414, 0x5353));
     }
 
     #[test]
