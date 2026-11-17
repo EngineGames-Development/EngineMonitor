@@ -3,6 +3,7 @@
 //! Module layout (see ARCHITECTURE.md). Monitoring modules are added
 //! milestone by milestone; only implemented modules are declared here.
 
+pub mod autostart;
 pub mod commands;
 pub mod cpu;
 pub mod error;
@@ -40,9 +41,6 @@ fn sync_window_visibility<R: Runtime>(window: &tauri::Window<R>) {
 /// Tauri's mock runtime), so tests exercise the exact production wiring.
 pub fn configure<R: Runtime>(builder: Builder<R>) -> Builder<R> {
     builder
-        // Used only from Rust via our own commands; its JS commands are not
-        // granted in the capability and therefore unreachable from the UI.
-        .plugin(tauri_plugin_autostart::Builder::new().build())
         .on_window_event(|window, event| {
             // Minimising/restoring arrives as a resize. Track it in the
             // backend (not via the WebView's visibilitychange, whose

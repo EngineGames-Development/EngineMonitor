@@ -8,12 +8,19 @@ use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 use tauri::{App, WebviewWindow, WebviewWindowBuilder};
 
+/// The real app context. Expanded in exactly one place: on macOS each
+/// `generate_context!()` embeds an Info.plist symbol, and two expansions in
+/// one binary fail to link (`_EMBED_INFO_PLIST` already defined).
+fn context() -> tauri::Context<tauri::test::MockRuntime> {
+    tauri::generate_context!()
+}
+
 fn app() -> (
     App<tauri::test::MockRuntime>,
     WebviewWindow<tauri::test::MockRuntime>,
 ) {
     let app = enginemonitor_lib::configure(mock_builder())
-        .build(tauri::generate_context!())
+        .build(context())
         .expect("failed to build app");
     enginemonitor_lib::init_with_data_dir(&app, Some(temp_data_dir()));
     let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -75,9 +82,8 @@ fn plugin_commands_are_not_exposed() {
     let (_app, webview) = app();
     assert!(get_ipc_response(&webview, request("plugin:fs|read_file")).is_err());
     assert!(get_ipc_response(&webview, request("plugin:shell|execute")).is_err());
-    // The autostart plugin is installed but only used from Rust.
+    // Launch at login goes through our own commands only; no autostart plugin.
     assert!(get_ipc_response(&webview, request("plugin:autostart|enable")).is_err());
-    assert!(get_ipc_response(&webview, request("plugin:autostart|disable")).is_err());
 }
 
 #[test]
@@ -352,7 +358,7 @@ fn history_failure_does_not_stop_live_monitoring() {
     use tauri::Listener;
 
     let app = enginemonitor_lib::configure(mock_builder())
-        .build(tauri::generate_context!())
+        .build(context())
         .unwrap();
     // A data "directory" that is actually a file: history cannot open.
     let blocker = temp_data_dir();
@@ -382,7 +388,7 @@ fn app_in(
     WebviewWindow<tauri::test::MockRuntime>,
 ) {
     let app = enginemonitor_lib::configure(mock_builder())
-        .build(tauri::generate_context!())
+        .build(context())
         .expect("failed to build app");
     enginemonitor_lib::init_with_data_dir(&app, Some(dir));
     let webview = WebviewWindowBuilder::new(&app, "main", Default::default())

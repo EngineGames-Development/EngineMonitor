@@ -23,7 +23,8 @@ serde_json = "1"
 thiserror = "2"
 sysinfo = { version = "0.40.3", default-features = false, features = ["system", "disk", "network"] }
 rusqlite = { version = "0.43", features = ["bundled"] }
-tauri-plugin-autostart = "2"
+# Launch at login, per-user only (see src/autostart.rs for why not the Tauri plugin).
+auto-launch = "0.6"
 
 # Windows: own implementations where sysinfo is insufficient.
 # - Process termination needs precise error codes (access denied vs. not

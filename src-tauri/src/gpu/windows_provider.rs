@@ -328,7 +328,7 @@ impl GpuProvider for WindowsGpuProvider {
 
     fn sample(&mut self) -> Result<Vec<GpuSample>, String> {
         self.ticks = self.ticks.wrapping_add(1);
-        if self.ticks % ADAPTER_REFRESH_TICKS == 0 {
+        if self.ticks.is_multiple_of(ADAPTER_REFRESH_TICKS) {
             if let Ok(adapters) = enumerate_adapters() {
                 self.adapters = adapters;
             }

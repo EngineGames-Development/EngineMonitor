@@ -105,7 +105,7 @@ Legend: ✅ done and verified · 🟡 partial · ⬜ not started · ⛔ blocked
 | Item | Status | Notes |
 |---|---|---|
 | App settings backend (`settings/app.rs`) | ✅ | Theme, refresh interval (250 ms–10 s), live graph window (60 s–1 h), network unit, smooth charts, Overview visibility, start minimised. Validated, unknown fields rejected, older payloads load with defaults. Persisted in SQLite; applied to the sampler immediately. |
-| Commands | ✅ | `app_settings`, `set_app_settings`, `set_window_visible`, `launch_at_login`, `set_launch_at_login`. Autostart plugin JS commands are not granted (IPC test). |
+| Commands | ✅ | `app_settings`, `set_app_settings`, `set_window_visible`, `launch_at_login`, `set_launch_at_login`. (Launch at login moved from `tauri-plugin-autostart` to `auto-launch` in M7, see below.) |
 | Frontend settings | ✅ | `SettingsProvider` (backend = source of truth, theme cached for first paint, malformed payloads rejected), new Settings page, theme from settings, network unit, live window, smooth charts, Overview visibility applied everywhere. Verified in the real app. |
 | Hidden-window throttle | ✅ | Minimise → `intervalMs` 5000 and no process list; restore → configured interval at once. Verified in the release app. |
 | Start minimised | ✅ | Verified in the real app (window iconic at start, sampler at 5 s, restore returns to 1 s). **Bug found and fixed:** a window minimised during start-up emits no resize event, so the throttle did not engage; start-up now syncs visibility explicitly. |

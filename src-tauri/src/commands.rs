@@ -6,8 +6,8 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, Runtime, State};
-use tauri_plugin_autostart::ManagerExt;
 
+use crate::autostart;
 use crate::error::{AppError, AppResult};
 use crate::events::{MonitorState, SnapshotEvent};
 use crate::history::{HistoryQuery, HistoryStatus};
@@ -99,25 +99,14 @@ pub fn set_window_visible(state: State<'_, MonitorState>, visible: bool) {
 /// which is the source of truth: the user can also change it there).
 #[tauri::command]
 pub fn launch_at_login<R: Runtime>(app: AppHandle<R>) -> AppResult<bool> {
-    app.autolaunch()
-        .is_enabled()
-        .map_err(|e| AppError::Internal(format!("could not read the login item: {e}")))
+    autostart::is_enabled(&autostart::login_item(&app.package_info().name)?)
 }
 
-/// Registers or removes the per-user login item (no elevation required).
-/// Returns the state read back from the OS afterwards.
+/// Registers or removes the per-user login item (no elevation required, never
+/// machine-wide). Returns the state read back from the OS afterwards.
 #[tauri::command]
 pub fn set_launch_at_login<R: Runtime>(app: AppHandle<R>, enabled: bool) -> AppResult<bool> {
-    let manager = app.autolaunch();
-    let result = if enabled {
-        manager.enable()
-    } else {
-        manager.disable()
-    };
-    result.map_err(|e| AppError::Internal(format!("could not change the login item: {e}")))?;
-    manager
-        .is_enabled()
-        .map_err(|e| AppError::Internal(format!("could not read the login item: {e}")))
+    autostart::set_enabled(&autostart::login_item(&app.package_info().name)?, enabled)
 }
 
 #[tauri::command]

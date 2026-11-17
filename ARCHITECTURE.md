@@ -57,7 +57,7 @@ with the code; sections that describe work not yet implemented are marked
 | **Settings in the same database.** | `settings` table of JSON values per group (`history`, `app`). Unknown fields are rejected (`deny_unknown_fields`), missing fields take defaults (older payloads still load), out-of-range values are rejected by `validate()`; invalid stored values fall back to defaults. |
 | **Backend is the source of truth for app settings.** | `AppSettings` (theme, refresh interval 250 ms–10 s, live graph window 60 s–1 h, network unit, smooth charts, Overview sections, start minimised) are validated and stored by the backend; a new refresh interval reaches the sampler immediately. The frontend `SettingsProvider` loads them once and saves every change as the complete object; only the theme is also cached in `localStorage`, so the first paint uses the right theme before the backend has answered. If storage is unavailable, saving returns `unsupported` and the UI says so instead of pretending. |
 | **Throttled while minimised.** | The window reports minimise/restore through Tauri window events (`Resized` + `is_minimized`). While hidden, the sampler runs at max(interval, 5 s) and skips the process list; on restore the configured interval returns at once. History keeps recording (it averages whatever ticks arrive). |
-| **Launch at login via `tauri-plugin-autostart`.** | Per-user login item (registry `Run` key on Windows), no administrator rights. The plugin's own JS commands are *not* granted; the app exposes two of its own commands (`launch_at_login`, `set_launch_at_login`) so the capability surface stays explicit. |
+| **Launch at login via `auto-launch`, per user only.** | `src/autostart.rs` registers a per-user login item (Windows `HKCU\…\Run`, macOS LaunchAgent, Linux XDG autostart) through two app commands (`launch_at_login`, `set_launch_at_login`). `tauri-plugin-autostart` was used first and replaced in M7: its Windows default tries the machine-wide `HKLM` key first and falls back to the per-user key only when denied, so an elevated app would have registered for all users, and the plugin can't change that mode. Dropping it also removed the plugin's JS commands from the app. |
 | **Own Windows network counters.** | `sysinfo`'s network refresh calls `GetIfTable2` plus `GetAdaptersAddresses` twice every tick, ~20–27 ms on the dev machine. `network/windows_table.rs` reads only `GetIfTable2` each tick (~3 ms) with the same interface selection as `sysinfo`; IP addresses still come from `sysinfo`, refreshed when the interface set changes or every 30 s. A hardware test compares both paths (interfaces, MACs, addresses, MTU, counters). |
 | **No routing / icon / font dependencies.** | Navigation is a small typed state machine; icons are a hand-drawn SVG set; fonts use the OS UI stack. Fewer dependencies, no network fetches, smaller bundle. |
 | **Minimal Tauri permissions.** | No `fs`, `shell`, `http` or `opener` plugins. The capability file grants only core event + window permissions and our own commands. A strict CSP blocks remote resources. |
@@ -118,7 +118,7 @@ EngineMonitor/
 | `rusqlite` 0.43 + `bundled` | history + settings persistence (SQLite compiled in; no system library) |
 | `nvml-wrapper` (not added) | NVIDIA temperature would need it; not implemented because it cannot be verified without NVIDIA hardware |
 | `windows` 0.62 (Windows only; same version `sysinfo` already uses) | DXGI adapters, PDH GPU counters, `OpenProcess`/`TerminateProcess`, `GetIfTable2` network counters |
-| `tauri-plugin-autostart` 2 | "launch at login" setting (only through the app's own two commands) |
+| `auto-launch` 0.6 | "launch at login", fixed to the current user (already a dependency of the Tauri plugin it replaced) |
 
 ### Frontend
 | Package | Use |
@@ -137,7 +137,7 @@ EngineMonitor/
 3. **Live data** — sampler thread + events, frontend subscription store, Overview with real-time graphs.
 4. **Depth** — process manager (search/sort/filter/virtualise/detail/terminate), GPU providers, dedicated pages.
 5. **History** — SQLite schema, batched writer, retention, History page.
-6. **Settings & polish** — persisted settings, theme switching from settings, autostart, performance work.
+6. **Settings & polish** — persisted settings, theme switching from settings, launch at login, performance work.
 7. **Hardening** — full test pass, bug fixes, production build, benchmarks, documentation.
 
 ## 5. Known technical limitations
